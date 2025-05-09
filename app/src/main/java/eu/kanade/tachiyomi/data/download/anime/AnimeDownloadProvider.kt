@@ -5,9 +5,9 @@ import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import logcat.LogPriority
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.storage.displayablePath
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.storage.displayablePath
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.items.episode.model.Episode
 import tachiyomi.domain.storage.service.StorageManager
@@ -57,7 +57,7 @@ class AnimeDownloadProvider(
      * @param source the source to query.
      */
     fun findSourceDir(source: AnimeSource): UniFile? {
-        return downloadsDir?.findFile(getSourceDirName(source), true)
+        return downloadsDir?.findFile(getSourceDirName(source))
     }
 
     /**
@@ -68,7 +68,7 @@ class AnimeDownloadProvider(
      */
     fun findAnimeDir(animeTitle: String, source: AnimeSource): UniFile? {
         val sourceDir = findSourceDir(source)
-        return sourceDir?.findFile(getAnimeDirName(animeTitle), true)
+        return sourceDir?.findFile(getAnimeDirName(animeTitle))
     }
 
     /**
@@ -87,7 +87,7 @@ class AnimeDownloadProvider(
     ): UniFile? {
         val animeDir = findAnimeDir(animeTitle, source)
         return getValidEpisodeDirNames(episodeName, episodeScanlator).asSequence()
-            .mapNotNull { animeDir?.findFile(it, true) }
+            .mapNotNull { animeDir?.findFile(it) }
             .firstOrNull()
     }
 
@@ -102,7 +102,7 @@ class AnimeDownloadProvider(
         val animeDir = findAnimeDir(anime.title, source) ?: return null to emptyList()
         return animeDir to episodes.mapNotNull { episode ->
             getValidEpisodeDirNames(episode.name, episode.scanlator).asSequence()
-                .mapNotNull { animeDir.findFile(it, true) }
+                .mapNotNull { animeDir.findFile(it) }
                 .firstOrNull()
         }
     }

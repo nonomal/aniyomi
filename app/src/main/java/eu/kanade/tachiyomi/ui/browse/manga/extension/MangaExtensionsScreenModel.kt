@@ -27,7 +27,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import tachiyomi.core.util.lang.launchIO
+import kotlinx.coroutines.launch
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -40,7 +41,7 @@ class MangaExtensionsScreenModel(
     private val getExtensions: GetMangaExtensionsByType = Injekt.get(),
 ) : StateScreenModel<MangaExtensionsScreenModel.State>(State()) {
 
-    private var _currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
+    private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
 
     init {
         val context = Injekt.get<Application>()
@@ -61,7 +62,8 @@ class MangaExtensionsScreenModel(
                                 it.name.contains(input, ignoreCase = true) ||
                                     it.baseUrl.contains(input, ignoreCase = true) ||
                                     it.id == input.toLongOrNull()
-                            } || extension.name.contains(input, ignoreCase = true)
+                            } ||
+                                extension.name.contains(input, ignoreCase = true)
                         }
                         is MangaExtension.Installed -> {
                             extension.sources.any {
@@ -75,7 +77,8 @@ class MangaExtensionsScreenModel(
                                     } else {
                                         false
                                     }
-                            } || extension.name.contains(input, ignoreCase = true)
+                            } ||
+                                extension.name.contains(input, ignoreCase = true)
                         }
                         is MangaExtension.Untrusted -> extension.name.contains(
                             input,
@@ -89,7 +92,7 @@ class MangaExtensionsScreenModel(
         screenModelScope.launchIO {
             combine(
                 state.map { it.searchQuery }.distinctUntilChanged().debounce(SEARCH_DEBOUNCE_MILLIS),
-                _currentDownloads,
+                currentDownloads,
                 getExtensions.subscribe(),
             ) { query, downloads, (_updates, _installed, _available, _untrusted) ->
                 val searchQuery = query ?: ""
@@ -183,11 +186,11 @@ class MangaExtensionsScreenModel(
     }
 
     private fun addDownloadState(extension: MangaExtension, installStep: InstallStep) {
-        _currentDownloads.update { it + Pair(extension.pkgName, installStep) }
+        currentDownloads.update { it + Pair(extension.pkgName, installStep) }
     }
 
     private fun removeDownloadState(extension: MangaExtension) {
-        _currentDownloads.update { it - extension.pkgName }
+        currentDownloads.update { it - extension.pkgName }
     }
 
     private suspend fun Flow<InstallStep>.collectToInstallUpdate(extension: MangaExtension) =
@@ -214,7 +217,9 @@ class MangaExtensionsScreenModel(
     }
 
     fun trustExtension(extension: MangaExtension.Untrusted) {
-        extensionManager.trust(extension)
+        screenModelScope.launch {
+            extensionManager.trust(extension)
+        }
     }
 
     @Immutable

@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
-import eu.kanade.tachiyomi.core.Constants
+import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreJob
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
@@ -22,8 +22,8 @@ import eu.kanade.tachiyomi.util.system.notificationManager
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.runBlocking
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.launchIO
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.entries.anime.model.Anime
@@ -396,6 +396,8 @@ class NotificationReceiver : BroadcastReceiver() {
         private const val ACTION_OPEN_EPISODE = "$ID.$NAME.ACTION_OPEN_EPISODE"
         private const val ACTION_DOWNLOAD_CHAPTER = "$ID.$NAME.ACTION_DOWNLOAD_CHAPTER"
         private const val ACTION_DOWNLOAD_EPISODE = "$ID.$NAME.ACTION_DOWNLOAD_EPISODE"
+
+        private const val ACTION_OPEN_ENTRY = "$ID.$NAME.ACTION_OPEN_ENTRY"
 
         private const val ACTION_RESUME_DOWNLOADS = "$ID.$NAME.ACTION_RESUME_DOWNLOADS"
         private const val ACTION_PAUSE_DOWNLOADS = "$ID.$NAME.ACTION_PAUSE_DOWNLOADS"
@@ -782,6 +784,44 @@ class NotificationReceiver : BroadcastReceiver() {
             return PendingIntent.getBroadcast(
                 context,
                 anime.id.hashCode(),
+                newIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Returns [PendingIntent] that opens the manga info controller
+         *
+         * @param context context of application
+         * @param mangaId id of the entry to open
+         */
+        internal fun openMangaEntryPendingActivity(context: Context, mangaId: Long): PendingIntent {
+            val newIntent = Intent(context, MainActivity::class.java).setAction(Constants.SHORTCUT_MANGA)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(Constants.MANGA_EXTRA, mangaId)
+                .putExtra("notificationId", mangaId.hashCode())
+            return PendingIntent.getActivity(
+                context,
+                mangaId.hashCode(),
+                newIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Returns [PendingIntent] that opens the anime info controller
+         *
+         * @param context context of application
+         * @param animeId id of the entry to open
+         */
+        internal fun openAnimeEntryPendingActivity(context: Context, animeId: Long): PendingIntent {
+            val newIntent = Intent(context, MainActivity::class.java).setAction(Constants.SHORTCUT_ANIME)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(Constants.ANIME_EXTRA, animeId)
+                .putExtra("notificationId", animeId.hashCode())
+            return PendingIntent.getActivity(
+                context,
+                animeId.hashCode(),
                 newIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )

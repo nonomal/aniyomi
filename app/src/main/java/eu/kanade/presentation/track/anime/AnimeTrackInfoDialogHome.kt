@@ -26,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,19 +37,19 @@ import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.track.components.TrackLogoIcon
 import eu.kanade.presentation.track.manga.TrackDetailsItem
 import eu.kanade.presentation.track.manga.TrackInfoItemMenu
+import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.ui.entries.anime.track.AnimeTrackItem
+import eu.kanade.tachiyomi.util.lang.toLocalDate
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
-import java.text.DateFormat
-
-private const val UnsetStatusTextAlpha = 0.5F
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun AnimeTrackInfoDialogHome(
     trackItems: List<AnimeTrackItem>,
-    dateFormat: DateFormat,
+    dateFormat: DateTimeFormatter,
     onStatusClick: (AnimeTrackItem) -> Unit,
     onEpisodeClick: (AnimeTrackItem) -> Unit,
     onScoreClick: (AnimeTrackItem) -> Unit,
@@ -59,6 +58,7 @@ fun AnimeTrackInfoDialogHome(
     onNewSearch: (AnimeTrackItem) -> Unit,
     onOpenInBrowser: (AnimeTrackItem) -> Unit,
     onRemoved: (AnimeTrackItem) -> Unit,
+    onCopyLink: (AnimeTrackItem) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -76,7 +76,7 @@ fun AnimeTrackInfoDialogHome(
                 TrackInfoItem(
                     title = item.track.title,
                     tracker = item.tracker,
-                    status = item.tracker.getStatus(item.track.status),
+                    status = (item.tracker as? AnimeTracker)?.getStatusForAnime(item.track.status),
                     onStatusClick = { onStatusClick(item) },
                     episodes = "${item.track.lastEpisodeSeen.toInt()}".let {
                         val totalEpisodes = item.track.totalEpisodes
@@ -94,19 +94,20 @@ fun AnimeTrackInfoDialogHome(
                         .takeIf { supportsScoring },
                     startDate = remember(item.track.startDate) {
                         dateFormat.format(
-                            item.track.startDate,
+                            item.track.startDate.toLocalDate(),
                         )
                     }
                         .takeIf { supportsReadingDates && item.track.startDate != 0L },
                     onStartDateClick = { onStartDateEdit(item) } // TODO
                         .takeIf { supportsReadingDates },
-                    endDate = dateFormat.format(item.track.finishDate)
+                    endDate = dateFormat.format(item.track.finishDate.toLocalDate())
                         .takeIf { supportsReadingDates && item.track.finishDate != 0L },
                     onEndDateClick = { onEndDateEdit(item) }
                         .takeIf { supportsReadingDates },
                     onNewSearch = { onNewSearch(item) },
                     onOpenInBrowser = { onOpenInBrowser(item) },
                     onRemoved = { onRemoved(item) },
+                    onCopyLink = { onCopyLink(item) },
                 )
             } else {
                 TrackInfoItemEmpty(
@@ -135,6 +136,7 @@ private fun TrackInfoItem(
     onNewSearch: () -> Unit,
     onOpenInBrowser: () -> Unit,
     onRemoved: () -> Unit,
+    onCopyLink: () -> Unit,
 ) {
     val context = LocalContext.current
     Column {
@@ -144,6 +146,7 @@ private fun TrackInfoItem(
             TrackLogoIcon(
                 tracker = tracker,
                 onClick = onOpenInBrowser,
+                onLongClick = onCopyLink,
             )
             Box(
                 modifier = Modifier
@@ -170,6 +173,7 @@ private fun TrackInfoItem(
             TrackInfoItemMenu(
                 onOpenInBrowser = onOpenInBrowser,
                 onRemoved = onRemoved,
+                onCopyLink = onCopyLink,
             )
         }
 
@@ -177,7 +181,7 @@ private fun TrackInfoItem(
             modifier = Modifier
                 .padding(top = 12.dp)
                 .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .padding(8.dp)
                 .clip(RoundedCornerShape(6.dp)),
         ) {
@@ -197,10 +201,9 @@ private fun TrackInfoItem(
                     if (onScoreClick != null) {
                         VerticalDivider()
                         TrackDetailsItem(
-                            modifier = Modifier
-                                .weight(1f)
-                                .alpha(if (score == null) UnsetStatusTextAlpha else 1f),
-                            text = score ?: stringResource(MR.strings.score),
+                            modifier = Modifier.weight(1f),
+                            text = score,
+                            placeholder = stringResource(MR.strings.score),
                             onClick = onScoreClick,
                         )
                     }

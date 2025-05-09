@@ -17,11 +17,12 @@ import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.util.lang.Hash
 import eu.kanade.tachiyomi.util.storage.copyAndSetReadOnlyTo
+import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import java.io.File
 
@@ -153,7 +154,7 @@ internal object MangaExtensionLoader {
 
                 val path = it.absolutePath
                 pkgManager.getPackageArchiveInfo(path, PACKAGE_FLAGS)
-                    ?.apply { applicationInfo.fixBasePaths(path) }
+                    ?.apply { applicationInfo!!.fixBasePaths(path) }
             }
             ?.filter { isPackageAnExtension(it) }
             ?.map { MangaExtensionInfo(packageInfo = it, isShared = false) }
@@ -185,7 +186,7 @@ internal object MangaExtensionLoader {
      * Attempts to load an extension from the given package name. It checks if the extension
      * contains the required feature flag before trying to load it.
      */
-    fun loadMangaExtensionFromPkgName(context: Context, pkgName: String): MangaLoadResult {
+    suspend fun loadMangaExtensionFromPkgName(context: Context, pkgName: String): MangaLoadResult {
         val extensionPackage = getMangaExtensionInfoFromPkgName(context, pkgName)
         if (extensionPackage == null) {
             logcat(LogPriority.ERROR) { "Extension package is not found ($pkgName)" }
@@ -210,7 +211,7 @@ internal object MangaExtensionLoader {
             )
                 ?.takeIf { isPackageAnExtension(it) }
                 ?.let {
-                    it.applicationInfo.fixBasePaths(privateExtensionFile.absolutePath)
+                    it.applicationInfo!!.fixBasePaths(privateExtensionFile.absolutePath)
                     MangaExtensionInfo(
                         packageInfo = it,
                         isShared = false,
@@ -242,10 +243,10 @@ internal object MangaExtensionLoader {
      * @param context The application context.
      * @param extensionInfo The extension to load.
      */
-    private fun loadMangaExtension(context: Context, extensionInfo: MangaExtensionInfo): MangaLoadResult {
+    private suspend fun loadMangaExtension(context: Context, extensionInfo: MangaExtensionInfo): MangaLoadResult {
         val pkgManager = context.packageManager
         val pkgInfo = extensionInfo.packageInfo
-        val appInfo = pkgInfo.applicationInfo
+        val appInfo = pkgInfo.applicationInfo!!
         val pkgName = pkgInfo.packageName
 
         val extName = pkgManager.getApplicationLabel(appInfo).toString().substringAfter(
@@ -273,7 +274,7 @@ internal object MangaExtensionLoader {
         if (signatures.isNullOrEmpty()) {
             logcat(LogPriority.WARN) { "Package $pkgName isn't signed" }
             return MangaLoadResult.Error
-        } else if (!trustExtension.isTrusted(pkgInfo, signatures.last())) {
+        } else if (!trustExtension.isTrusted(pkgInfo, signatures)) {
             val extension = MangaExtension.Untrusted(
                 extName,
                 pkgName,
@@ -293,7 +294,7 @@ internal object MangaExtensionLoader {
         }
 
         val classLoader = try {
-            PathClassLoader(appInfo.sourceDir, null, context.classLoader)
+            ChildFirstPathClassLoader(appInfo.sourceDir, null, context.classLoader)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($pkgName)" }
             return MangaLoadResult.Error
@@ -315,6 +316,26 @@ internal object MangaExtensionLoader {
                         is MangaSource -> listOf(obj)
                         is SourceFactory -> obj.createSources()
                         else -> throw Exception("Unknown source class type: ${obj.javaClass}")
+                    }
+                } catch (e: LinkageError) {
+                    try {
+                        val fallBackClassLoader = PathClassLoader(appInfo.sourceDir, null, context.classLoader)
+                        when (
+                            val obj = Class.forName(
+                                it,
+                                false,
+                                fallBackClassLoader,
+                            ).getDeclaredConstructor().newInstance()
+                        ) {
+                            is MangaSource -> {
+                                listOf(obj)
+                            }
+                            is SourceFactory -> obj.createSources()
+                            else -> throw Exception("Unknown source class type: ${obj.javaClass}")
+                        }
+                    } catch (e: Throwable) {
+                        logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($it)" }
+                        return MangaLoadResult.Error
                     }
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($it)" }
@@ -386,7 +407,7 @@ internal object MangaExtensionLoader {
      */
     private fun getSignatures(pkgInfo: PackageInfo): List<String>? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val signingInfo = pkgInfo.signingInfo
+            val signingInfo = pkgInfo.signingInfo!!
             if (signingInfo.hasMultipleSigners()) {
                 signingInfo.apkContentsSigners
             } else {

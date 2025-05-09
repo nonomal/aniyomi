@@ -6,6 +6,8 @@ import android.content.Intent
 import android.provider.Settings
 import android.webkit.WebStorage
 import android.webkit.WebView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,7 +58,6 @@ import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.util.CrashLogUtil
 import eu.kanade.tachiyomi.util.system.isDevFlavor
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
-import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.isShizukuInstalled
 import eu.kanade.tachiyomi.util.system.powerManager
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
@@ -68,10 +69,10 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import okhttp3.Headers
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.launchNonCancellable
-import tachiyomi.core.util.lang.withUIContext
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withUIContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.manga.interactor.ResetMangaViewerFlags
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -96,12 +97,6 @@ object SettingsAdvancedScreen : SearchableSettings {
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
 
         return listOf(
-            Preference.PreferenceItem.SwitchPreference(
-                pref = basePreferences.acraEnabled(),
-                title = stringResource(MR.strings.pref_enable_acra),
-                subtitle = stringResource(MR.strings.pref_acra_summary),
-                enabled = isPreviewBuildType || isReleaseBuildType,
-            ),
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_dump_crash_logs),
                 subtitle = stringResource(MR.strings.pref_dump_crash_logs_summary),
@@ -141,6 +136,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             getDataGroup(),
             getNetworkGroup(networkPreferences = networkPreferences),
             getLibraryGroup(),
+            getReaderGroup(basePreferences = basePreferences),
             getExtensionsGroup(basePreferences = basePreferences),
             // SY -->
             getDataSaverGroup(),
@@ -289,6 +285,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                         try {
                             // OkHttp checks for valid values internally
                             Headers.Builder().add("User-Agent", it)
+                            context.toast(MR.strings.requires_app_restart)
                         } catch (_: IllegalArgumentException) {
                             context.toast(MR.strings.error_user_agent_string_invalid)
                             return@EditTextPreference false
@@ -340,6 +337,34 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 context.toast(message)
                             }
                         }
+                    },
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getReaderGroup(
+        basePreferences: BasePreferences,
+    ): Preference.PreferenceGroup {
+        val context = LocalContext.current
+        val chooseColorProfile = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            uri?.let {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+                basePreferences.displayProfile().set(uri.toString())
+            }
+        }
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_category_reader),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_display_profile),
+                    subtitle = basePreferences.displayProfile().get(),
+                    onClick = {
+                        chooseColorProfile.launch(arrayOf("*/*"))
                     },
                 ),
             ),

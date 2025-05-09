@@ -18,8 +18,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
-import tachiyomi.core.util.lang.launchIO
-import tachiyomi.core.util.lang.withIOContext
+import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.PriorityBlockingQueue
@@ -91,7 +91,9 @@ internal class HttpPageLoader(
         val imageUrl = page.imageUrl
 
         // Check if the image has been deleted
-        if (page.status == Page.State.READY && imageUrl != null && !chapterCache.isImageInCache(
+        if (page.status == Page.State.READY &&
+            imageUrl != null &&
+            !chapterCache.isImageInCache(
                 imageUrl,
             )
         ) {

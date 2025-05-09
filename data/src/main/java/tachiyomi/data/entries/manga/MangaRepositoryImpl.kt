@@ -2,7 +2,7 @@ package tachiyomi.data.entries.manga
 
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.manga.MangaDatabaseHandler
@@ -10,6 +10,8 @@ import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.entries.manga.model.MangaUpdate
 import tachiyomi.domain.entries.manga.repository.MangaRepository
 import tachiyomi.domain.library.manga.LibraryManga
+import java.time.LocalDate
+import java.time.ZoneId
 
 class MangaRepositoryImpl(
     private val handler: MangaDatabaseHandler,
@@ -47,6 +49,10 @@ class MangaRepositoryImpl(
         return handler.awaitList { mangasQueries.getFavorites(MangaMapper::mapManga) }
     }
 
+    override suspend fun getReadMangaNotInLibrary(): List<Manga> {
+        return handler.awaitList { mangasQueries.getReadMangaNotInLibrary(MangaMapper::mapManga) }
+    }
+
     override suspend fun getLibraryManga(): List<LibraryManga> {
         return handler.awaitList { libraryViewQueries.library(MangaMapper::mapLibraryManga) }
     }
@@ -62,6 +68,13 @@ class MangaRepositoryImpl(
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<Manga> {
         return handler.awaitList {
             mangasQueries.getDuplicateLibraryManga(title, id, MangaMapper::mapManga)
+        }
+    }
+
+    override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> {
+        val epochMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond() * 1000
+        return handler.subscribeToList {
+            mangasQueries.getUpcomingManga(epochMillis, statuses, MangaMapper::mapManga)
         }
     }
 
@@ -106,6 +119,7 @@ class MangaRepositoryImpl(
                 coverLastModified = manga.coverLastModified,
                 dateAdded = manga.dateAdded,
                 updateStrategy = manga.updateStrategy,
+                version = manga.version,
             )
             mangasQueries.selectLastInsertedRowId()
         }
@@ -155,6 +169,8 @@ class MangaRepositoryImpl(
                     dateAdded = value.dateAdded,
                     mangaId = value.id,
                     updateStrategy = value.updateStrategy?.let(MangaUpdateStrategyColumnAdapter::encode),
+                    version = value.version,
+                    isSyncing = 0,
                 )
             }
         }

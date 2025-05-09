@@ -9,12 +9,14 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.transform.CircleCropTransformation
+import coil3.asDrawable
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.transformations
+import coil3.transform.CircleCropTransformation
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.core.Constants
+import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloader
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
@@ -27,8 +29,8 @@ import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.launchUI
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.launchUI
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.items.chapter.model.Chapter
 import tachiyomi.domain.library.manga.LibraryManga
@@ -304,7 +306,7 @@ class MangaLibraryUpdateNotifier(
             .transformations(CircleCropTransformation())
             .size(NOTIF_ICON_SIZE)
             .build()
-        val drawable = context.imageLoader.execute(request).drawable
+        val drawable = context.imageLoader.execute(request).image?.asDrawable(context.resources)
         return drawable?.getBitmapOrNull()
     }
 

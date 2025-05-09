@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.track
 
 import android.app.Application
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.manga.interactor.AddMangaTracks
 import eu.kanade.domain.track.manga.model.toDomainTrack
 import eu.kanade.tachiyomi.data.database.models.manga.MangaTrack
@@ -8,9 +9,9 @@ import eu.kanade.tachiyomi.data.track.model.MangaTrackSearch
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import logcat.LogPriority
-import tachiyomi.core.util.lang.withIOContext
-import tachiyomi.core.util.lang.withUIContext
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.util.lang.withIOContext
+import tachiyomi.core.common.util.lang.withUIContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.track.manga.interactor.InsertMangaTrack
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -72,7 +73,8 @@ interface MangaTracker {
 
     suspend fun setRemoteLastChapterRead(track: MangaTrack, chapterNumber: Int) {
         if (track.last_chapter_read == 0.0 &&
-            track.last_chapter_read < chapterNumber && track.status != getRereadingStatus()
+            track.last_chapter_read < chapterNumber &&
+            track.status != getRereadingStatus()
         ) {
             track.status = getReadingStatus()
         }
@@ -112,4 +114,6 @@ interface MangaTracker {
             withUIContext { Injekt.get<Application>().toast(e.message) }
         }
     }
+
+    fun getStatusForManga(status: Long): StringResource?
 }

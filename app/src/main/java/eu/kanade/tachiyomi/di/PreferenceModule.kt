@@ -7,12 +7,17 @@ import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.network.NetworkPreferences
+import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
+import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
+import eu.kanade.tachiyomi.ui.player.settings.DecoderPreferences
+import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
+import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.system.isDevFlavor
-import tachiyomi.core.preference.AndroidPreferenceStore
-import tachiyomi.core.preference.PreferenceStore
-import tachiyomi.core.storage.AndroidStorageFolderProvider
+import tachiyomi.core.common.preference.AndroidPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -47,6 +52,21 @@ class PreferenceModule(val app: Application) : InjektModule {
         }
         addSingletonFactory {
             PlayerPreferences(get())
+        }
+        addSingletonFactory {
+            GesturePreferences(get())
+        }
+        addSingletonFactory {
+            DecoderPreferences(get())
+        }
+        addSingletonFactory {
+            SubtitlePreferences(get())
+        }
+        addSingletonFactory {
+            AudioPreferences(get())
+        }
+        addSingletonFactory {
+            AdvancedPlayerPreferences(get())
         }
         addSingletonFactory {
             TrackPreferences(get())

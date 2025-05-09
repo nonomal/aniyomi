@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.manga.MangaDownloadManager
 import eu.kanade.tachiyomi.ui.category.CategoriesTab
 import eu.kanade.tachiyomi.ui.download.DownloadsTab
+import eu.kanade.tachiyomi.ui.setting.PlayerSettingsScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsTab
 import eu.kanade.tachiyomi.ui.storage.StorageTab
@@ -34,13 +35,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import tachiyomi.core.util.lang.launchIO
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-object MoreTab : Tab() {
+data object MoreTab : Tab {
 
     override val options: TabOptions
         @Composable
@@ -74,11 +75,12 @@ object MoreTab : Tab() {
             isFDroid = context.isInstalledFromFDroid(),
             navStyle = navStyle,
             onClickAlt = { navigator.push(navStyle.moreTab) },
-            onClickDownloadQueue = { navigator.push(DownloadsTab()) },
-            onClickCategories = { navigator.push(CategoriesTab()) },
-            onClickStats = { navigator.push(StatsTab()) },
-            onClickStorage = { navigator.push(StorageTab()) },
+            onClickDownloadQueue = { navigator.push(DownloadsTab) },
+            onClickCategories = { navigator.push(CategoriesTab) },
+            onClickStats = { navigator.push(StatsTab) },
+            onClickStorage = { navigator.push(StorageTab) },
             onClickDataAndStorage = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
+            onClickPlayerSettings = { navigator.push(PlayerSettingsScreen) },
             onClickSettings = { navigator.push(SettingsScreen()) },
             onClickAbout = { navigator.push(SettingsScreen(SettingsScreen.Destination.About)) },
         )
@@ -94,10 +96,10 @@ private class MoreScreenModel(
     var downloadedOnly by preferences.downloadedOnly().asState(screenModelScope)
     var incognitoMode by preferences.incognitoMode().asState(screenModelScope)
 
-    private var _state: MutableStateFlow<DownloadQueueState> = MutableStateFlow(
+    private var _downloadQueueState: MutableStateFlow<DownloadQueueState> = MutableStateFlow(
         DownloadQueueState.Stopped,
     )
-    val downloadQueueState: StateFlow<DownloadQueueState> = _state.asStateFlow()
+    val downloadQueueState: StateFlow<DownloadQueueState> = _downloadQueueState.asStateFlow()
 
     init {
         // Handle running/paused status change and queue progress updating
@@ -120,7 +122,7 @@ private class MoreScreenModel(
                             val isDownloading = isDownloadingAnime || isDownloadingManga
                             val downloadQueueSize = mangaDownloadQueueSize + animeDownloadQueueSize
                             val pendingDownloadExists = downloadQueueSize != 0
-                            _state.value = when {
+                            _downloadQueueState.value = when {
                                 !pendingDownloadExists -> DownloadQueueState.Stopped
                                 !isDownloading -> DownloadQueueState.Paused(downloadQueueSize)
                                 else -> DownloadQueueState.Downloading(downloadQueueSize)

@@ -1,6 +1,6 @@
 package tachiyomi.domain.download.service
 
-import tachiyomi.core.preference.PreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 
 class DownloadPreferences(
     private val preferenceStore: PreferenceStore,
@@ -20,7 +20,7 @@ class DownloadPreferences(
 
     fun saveChaptersAsCBZ() = preferenceStore.getBoolean("save_chapter_as_cbz", true)
 
-    fun splitTallImages() = preferenceStore.getBoolean("split_tall_images", false)
+    fun splitTallImages() = preferenceStore.getBoolean("split_tall_images", true)
 
     fun autoDownloadWhileReading() = preferenceStore.getInt("auto_download_while_reading", 0)
     fun autoDownloadWhileWatching() = preferenceStore.getInt("auto_download_while_watching", 0)
@@ -65,7 +65,8 @@ class DownloadPreferences(
     )
 
     fun numberOfDownloads() = preferenceStore.getInt("download_slots", 1)
-    fun safeDownload() = preferenceStore.getBoolean("safe_download", true)
-    fun numberOfThreads() = preferenceStore.getInt("download_threads", 1)
     fun downloadSpeedLimit() = preferenceStore.getInt("download_speed_limit", 0)
+
+    fun downloadNewUnreadChaptersOnly() = preferenceStore.getBoolean("download_new_unread_chapters_only", false)
+    fun downloadNewUnseenEpisodesOnly() = preferenceStore.getBoolean("download_new_unread_episodes_only", false)
 }

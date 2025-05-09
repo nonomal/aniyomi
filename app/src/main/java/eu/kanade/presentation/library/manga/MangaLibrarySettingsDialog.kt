@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -19,19 +22,21 @@ import eu.kanade.tachiyomi.ui.library.manga.MangaLibrarySettingsScreenModel
 import eu.kanade.tachiyomi.util.system.isDevFlavor
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import kotlinx.collections.immutable.persistentListOf
-import tachiyomi.core.preference.TriState
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.manga.model.MangaLibrarySort
 import tachiyomi.domain.library.manga.model.sort
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.BaseSortItem
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.SortItem
 import tachiyomi.presentation.core.components.TriStateItem
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 
@@ -125,7 +130,7 @@ private fun ColumnScope.FilterPage(
         )
     }
 
-    val trackers = remember { screenModel.trackers }
+    val trackers by screenModel.trackersFlow.collectAsState()
     when (trackers.size) {
         0 -> {
             // No trackers
@@ -162,26 +167,42 @@ private fun ColumnScope.SortPage(
     category: Category?,
     screenModel: MangaLibrarySettingsScreenModel,
 ) {
+    val trackers by screenModel.trackersFlow.collectAsState()
     val sortingMode = category.sort.type
     val sortDescending = !category.sort.isAscending
 
-    val trackerSortOption =
-        if (screenModel.trackers.isEmpty()) {
-            emptyList()
+    val options = remember(trackers.isEmpty()) {
+        val trackerMeanPair = if (trackers.isNotEmpty()) {
+            MR.strings.action_sort_tracker_score to MangaLibrarySort.Type.TrackerMean
         } else {
-            listOf(MR.strings.action_sort_tracker_score to MangaLibrarySort.Type.TrackerMean)
+            null
         }
+        listOfNotNull(
+            MR.strings.action_sort_alpha to MangaLibrarySort.Type.Alphabetical,
+            MR.strings.action_sort_total to MangaLibrarySort.Type.TotalChapters,
+            MR.strings.action_sort_last_read to MangaLibrarySort.Type.LastRead,
+            MR.strings.action_sort_last_manga_update to MangaLibrarySort.Type.LastUpdate,
+            MR.strings.action_sort_unread_count to MangaLibrarySort.Type.UnreadCount,
+            MR.strings.action_sort_latest_chapter to MangaLibrarySort.Type.LatestChapter,
+            MR.strings.action_sort_chapter_fetch_date to MangaLibrarySort.Type.ChapterFetchDate,
+            MR.strings.action_sort_date_added to MangaLibrarySort.Type.DateAdded,
+            trackerMeanPair,
+            MR.strings.action_sort_random to MangaLibrarySort.Type.Random,
+        )
+    }
 
-    listOf(
-        MR.strings.action_sort_alpha to MangaLibrarySort.Type.Alphabetical,
-        MR.strings.action_sort_total to MangaLibrarySort.Type.TotalChapters,
-        MR.strings.action_sort_last_read to MangaLibrarySort.Type.LastRead,
-        MR.strings.action_sort_last_manga_update to MangaLibrarySort.Type.LastUpdate,
-        MR.strings.action_sort_unread_count to MangaLibrarySort.Type.UnreadCount,
-        MR.strings.action_sort_latest_chapter to MangaLibrarySort.Type.LatestChapter,
-        MR.strings.action_sort_chapter_fetch_date to MangaLibrarySort.Type.ChapterFetchDate,
-        MR.strings.action_sort_date_added to MangaLibrarySort.Type.DateAdded,
-    ).plus(trackerSortOption).map { (titleRes, mode) ->
+    options.map { (titleRes, mode) ->
+        if (mode == MangaLibrarySort.Type.Random) {
+            BaseSortItem(
+                label = stringResource(titleRes),
+                icon = Icons.Default.Refresh
+                    .takeIf { sortingMode == MangaLibrarySort.Type.Random },
+                onClick = {
+                    screenModel.setSort(category, mode, MangaLibrarySort.Direction.Ascending)
+                },
+            )
+            return@map
+        }
         SortItem(
             label = stringResource(titleRes),
             sortDescending = sortDescending.takeIf { sortingMode == mode },
@@ -227,17 +248,29 @@ private fun ColumnScope.DisplayPage(
         }
     }
 
-    if (displayMode != LibraryDisplayMode.List) {
-        val configuration = LocalConfiguration.current
-        val columnPreference = remember {
-            if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                screenModel.libraryPreferences.mangaLandscapeColumns()
-            } else {
-                screenModel.libraryPreferences.mangaPortraitColumns()
-            }
+    val configuration = LocalConfiguration.current
+    val columnPreference = remember {
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            screenModel.libraryPreferences.mangaLandscapeColumns()
+        } else {
+            screenModel.libraryPreferences.mangaPortraitColumns()
         }
+    }
 
-        val columns by columnPreference.collectAsState()
+    val columns by columnPreference.collectAsState()
+    if (displayMode == LibraryDisplayMode.List) {
+        SliderItem(
+            label = stringResource(MR.strings.pref_library_rows),
+            max = 10,
+            value = columns,
+            valueText = if (columns > 0) {
+                pluralStringResource(MR.plurals.pref_library_entries_in_column, columns, columns)
+            } else {
+                stringResource(MR.strings.label_default)
+            },
+            onChange = columnPreference::set,
+        )
+    } else {
         SliderItem(
             label = stringResource(MR.strings.pref_library_columns),
             max = 10,

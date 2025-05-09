@@ -1,9 +1,9 @@
 package tachiyomi.domain.library.service
 
-import tachiyomi.core.preference.Preference
-import tachiyomi.core.preference.PreferenceStore
-import tachiyomi.core.preference.TriState
-import tachiyomi.core.preference.getEnum
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.core.common.preference.getEnum
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.library.anime.model.AnimeLibrarySort
@@ -88,6 +88,11 @@ class LibraryPreferences(
     // Common Cache
 
     fun autoClearItemCache() = preferenceStore.getBoolean("auto_clear_chapter_cache", false)
+
+    // Random Sort Seed
+
+    fun randomAnimeSortSeed() = preferenceStore.getInt("library_random_anime_sort_seed", 0)
+    fun randomMangaSortSeed() = preferenceStore.getInt("library_random_manga_sort_seed", 0)
 
     // Mixture Columns
 

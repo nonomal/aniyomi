@@ -35,9 +35,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import tachiyomi.core.preference.CheckboxState
-import tachiyomi.core.preference.mapAsCheckboxState
-import tachiyomi.core.util.lang.launchIO
+import tachiyomi.core.common.preference.CheckboxState
+import tachiyomi.core.common.preference.mapAsCheckboxState
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.category.anime.interactor.GetAnimeCategories
 import tachiyomi.domain.category.anime.interactor.SetAnimeCategories
 import tachiyomi.domain.category.model.Category
@@ -132,6 +132,16 @@ class BrowseAnimeSourceScreenModel(
             libraryPreferences.animePortraitColumns()
         }.get()
         return if (columns == 0) GridCells.Adaptive(128.dp) else GridCells.Fixed(columns)
+    }
+
+    // returns the number from the size slider
+    fun getColumnsPreferenceForCurrentOrientation(orientation: Int): Int {
+        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        return if (isLandscape) {
+            libraryPreferences.animeLandscapeColumns()
+        } else {
+            libraryPreferences.animePortraitColumns()
+        }.get()
     }
 
     fun resetFilters() {
@@ -349,7 +359,7 @@ class BrowseAnimeSourceScreenModel(
             val anime: Anime,
             val initialSelection: ImmutableList<CheckboxState.State<Category>>,
         ) : Dialog
-        data class Migrate(val newAnime: Anime) : Dialog
+        data class Migrate(val newAnime: Anime, val oldAnime: Anime) : Dialog
     }
 
     @Immutable

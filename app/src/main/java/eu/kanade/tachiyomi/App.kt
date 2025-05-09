@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi
 import android.annotation.SuppressLint
 import android.app.Application
 import android.app.PendingIntent
-import android.app.job.JobInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,12 +15,13 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import coil.ImageLoader
-import coil.ImageLoaderFactory
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
-import coil.disk.DiskCache
-import coil.util.DebugLogger
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.allowRgb565
+import coil3.request.crossfade
+import coil3.util.DebugLogger
+import dev.mihon.injekt.patchInjekt
 import eu.kanade.domain.DomainModule
 import eu.kanade.domain.SYDomainModule
 import eu.kanade.domain.base.BasePreferences
@@ -32,6 +32,7 @@ import eu.kanade.tachiyomi.crash.GlobalExceptionHandler
 import eu.kanade.tachiyomi.data.coil.AnimeCoverFetcher
 import eu.kanade.tachiyomi.data.coil.AnimeCoverKeyer
 import eu.kanade.tachiyomi.data.coil.AnimeKeyer
+import eu.kanade.tachiyomi.data.coil.BufferedSourceFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
 import eu.kanade.tachiyomi.data.coil.MangaKeyer
@@ -46,8 +47,6 @@ import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.system.cancelNotification
-import eu.kanade.tachiyomi.util.system.isPreviewBuildType
-import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
@@ -55,15 +54,13 @@ import kotlinx.coroutines.flow.onEach
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
-import org.acra.config.httpSender
-import org.acra.config.scheduler
-import org.acra.data.StringFormat
-import org.acra.ktx.initAcra
-import org.acra.sender.HttpSender
+import mihon.core.migration.Migrator
+import mihon.core.migration.migrations.migrations
 import org.conscrypt.Conscrypt
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.preference.Preference
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.widget.entries.anime.AnimeWidgetManager
 import tachiyomi.presentation.widget.entries.manga.MangaWidgetManager
@@ -72,7 +69,7 @@ import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.security.Security
 
-class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
+class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factory {
 
     private val basePreferences: BasePreferences by injectLazy()
     private val networkPreferences: NetworkPreferences by injectLazy()
@@ -82,8 +79,8 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
     @SuppressLint("LaunchActivityFromNotification")
     override fun onCreate() {
         super<Application>.onCreate()
+        patchInjekt()
 
-        setupAcra()
         GlobalExceptionHandler.initialize(applicationContext, CrashActivity::class.java)
 
         // TLS 1.3 support for Android < 10
@@ -151,40 +148,55 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
         if (!LogcatLogger.isInstalled && networkPreferences.verboseLogging().get()) {
             LogcatLogger.install(AndroidLogcatLogger(LogPriority.VERBOSE))
         }
+
+        initializeMigrator()
     }
 
-    override fun newImageLoader(): ImageLoader {
+    private fun initializeMigrator() {
+        val preferenceStore = Injekt.get<PreferenceStore>()
+        val preference = preferenceStore.getInt(Preference.appStateKey("last_version_code"), 0)
+        logcat { "Migration from ${preference.get()} to ${BuildConfig.VERSION_CODE}" }
+        Migrator.initialize(
+            old = preference.get(),
+            new = BuildConfig.VERSION_CODE,
+            migrations = migrations,
+            onMigrationComplete = {
+                logcat { "Updating last version to ${BuildConfig.VERSION_CODE}" }
+                preference.set(BuildConfig.VERSION_CODE)
+            },
+        )
+    }
+
+    override fun newImageLoader(context: Context): ImageLoader {
         return ImageLoader.Builder(this).apply {
-            val callFactoryInit = { Injekt.get<NetworkHelper>().client }
-            val diskCacheInit = { CoilDiskCache.get(this@App) }
+            val callFactoryLazy = lazy { Injekt.get<NetworkHelper>().client }
             components {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
-                }
+                // NetworkFetcher.Factory
+                add(OkHttpNetworkFetcherFactory(callFactoryLazy::value))
+                // Decoder.Factory
                 add(TachiyomiImageDecoder.Factory())
-                add(MangaCoverFetcher.MangaFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
-                add(AnimeCoverFetcher.AnimeFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
-                add(AnimeCoverFetcher.AnimeCoverFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
+                // Fetcher.Factory
+                add(BufferedSourceFetcher.Factory())
+                add(MangaCoverFetcher.MangaFactory(callFactoryLazy))
+                add(MangaCoverFetcher.MangaCoverFactory(callFactoryLazy))
+                add(AnimeCoverFetcher.AnimeFactory(callFactoryLazy))
+                add(AnimeCoverFetcher.AnimeCoverFactory(callFactoryLazy))
+                // Keyer
                 add(AnimeKeyer())
-                add(MangaCoverFetcher.MangaCoverFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
                 add(MangaKeyer())
                 add(AnimeCoverKeyer())
                 add(MangaCoverKeyer())
             }
-            callFactory(callFactoryInit)
-            diskCache(diskCacheInit)
-            diskCache(diskCacheInit)
+
             crossfade((300 * this@App.animatorDurationScale).toInt())
             allowRgb565(DeviceUtil.isLowRamDevice(this@App))
             if (networkPreferences.verboseLogging().get()) logger(DebugLogger())
 
             // Coil spawns a new thread for every image load by default
-            fetcherDispatcher(Dispatchers.IO.limitedParallelism(8))
-            decoderDispatcher(Dispatchers.IO.limitedParallelism(2))
-            transformationDispatcher(Dispatchers.IO.limitedParallelism(2))
-        }.build()
+            fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
+            decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
+        }
+            .build()
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -212,31 +224,6 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
         } catch (_: Exception) {
         }
         return super.getPackageName()
-    }
-
-    private fun setupAcra() {
-        if (BuildConfig.ACRA_URI.isNotEmpty() && isPreviewBuildType || isReleaseBuildType) {
-            initAcra {
-                buildConfigClass = BuildConfig::class.java
-                excludeMatchingSharedPreferencesKeys = listOf(
-                    Preference.privateKey(".*"), ".*username.*", ".*password.*", ".*token.*",
-                )
-
-                reportFormat = StringFormat.JSON
-                httpSender {
-                    uri = BuildConfig.ACRA_URI
-                    basicAuthLogin = BuildConfig.ACRA_LOGIN
-                    basicAuthPassword = BuildConfig.ACRA_PASSWORD
-                    httpMethod = HttpSender.Method.POST
-                }
-
-                scheduler {
-                    requiresBatteryNotLow = true
-                    requiresDeviceIdle = true
-                    requiresNetworkType = JobInfo.NETWORK_TYPE_UNMETERED
-                }
-            }
-        }
     }
 
     private fun setupNotificationChannels() {
@@ -276,45 +263,3 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
 }
 
 private const val ACTION_DISABLE_INCOGNITO_MODE = "tachi.action.DISABLE_INCOGNITO_MODE"
-
-/**
- * Direct copy of Coil's internal SingletonDiskCache so that [MangaCoverFetcher] can access it.
- */
-private object CoilDiskCache {
-
-    private const val FOLDER_NAME = "image_cache"
-    private var instance: DiskCache? = null
-
-    @Synchronized
-    fun get(context: Context): DiskCache {
-        return instance ?: run {
-            val safeCacheDir = context.cacheDir.apply { mkdirs() }
-            // Create the singleton disk cache instance.
-            DiskCache.Builder()
-                .directory(safeCacheDir.resolve(FOLDER_NAME))
-                .build()
-                .also { instance = it }
-        }
-    }
-}
-
-/**
- * Direct copy of Coil's internal SingletonDiskCache so that [MangaCoverFetcher] can access it.
- */
-internal object CoilDiskCacheAnime {
-
-    private const val FOLDER_NAME = "anime_image_cache"
-    private var instance: DiskCache? = null
-
-    @Synchronized
-    fun get(context: Context): DiskCache {
-        return instance ?: run {
-            val safeCacheDir = context.cacheDir.apply { mkdirs() }
-            // Create the singleton disk cache instance.
-            DiskCache.Builder()
-                .directory(safeCacheDir.resolve(FOLDER_NAME))
-                .build()
-                .also { instance = it }
-        }
-    }
-}

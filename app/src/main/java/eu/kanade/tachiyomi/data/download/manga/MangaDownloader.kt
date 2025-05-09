@@ -41,33 +41,31 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
+import mihon.core.archive.ZipWriter
 import nl.adaptivity.xmlutil.serialization.XML
 import okhttp3.Response
 import okio.Throttler
 import okio.buffer
-import tachiyomi.core.i18n.stringResource
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.storage.extension
+import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.launchNow
+import tachiyomi.core.common.util.lang.withIOContext
+import tachiyomi.core.common.util.system.ImageUtil
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
-import tachiyomi.core.storage.extension
-import tachiyomi.core.util.lang.launchIO
-import tachiyomi.core.util.lang.launchNow
-import tachiyomi.core.util.lang.withIOContext
-import tachiyomi.core.util.system.ImageUtil
-import tachiyomi.core.util.system.logcat
 import tachiyomi.domain.category.manga.interactor.GetMangaCategories
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.items.chapter.model.Chapter
 import tachiyomi.domain.source.manga.service.MangaSourceManager
+import tachiyomi.domain.track.manga.interactor.GetMangaTracks
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.BufferedOutputStream
 import java.io.File
 import java.util.Locale
-import java.util.zip.CRC32
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 /**
  * This class is the one in charge of downloading chapters.
@@ -87,6 +85,7 @@ class MangaDownloader(
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val xml: XML = Injekt.get(),
     private val getCategories: GetMangaCategories = Injekt.get(),
+    private val getMangaTracks: GetMangaTracks = Injekt.get(),
     // SY -->
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     // SY <--
@@ -198,7 +197,7 @@ class MangaDownloader(
     fun clearQueue() {
         cancelDownloaderJob()
 
-        _clearQueue()
+        internalClearQueue()
         notifier.dismissProgress()
     }
 
@@ -341,6 +340,7 @@ class MangaDownloader(
                 context.stringResource(MR.strings.download_insufficient_space),
                 download.chapter.name,
                 download.manga.title,
+                download.manga.id,
             )
             return
         }
@@ -436,7 +436,7 @@ class MangaDownloader(
             // If the page list threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = MangaDownload.State.ERROR
-            notifier.onError(error.message, download.chapter.name, download.manga.title)
+            notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
         }
     }
 
@@ -467,9 +467,10 @@ class MangaDownloader(
 
         // Try to find the image file
         val imageFile = tmpDir.listFiles()?.firstOrNull {
-            it.name!!.startsWith("$filename.") || it.name!!.startsWith(
-                "${filename}__001",
-            )
+            it.name!!.startsWith("$filename.") ||
+                it.name!!.startsWith(
+                    "${filename}__001",
+                )
         }
 
         try {
@@ -494,7 +495,7 @@ class MangaDownloader(
             // Mark this page as error and allow to download the remaining
             page.progress = 0
             page.status = Page.State.ERROR
-            notifier.onError(e.message, download.chapter.name, download.manga.title)
+            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
         }
     }
 
@@ -575,14 +576,8 @@ class MangaDownloader(
      * @param file the file where the image is already downloaded.
      */
     private fun getImageExtension(response: Response, file: UniFile): String {
-        // Read content type if available.
         val mime = response.body.contentType()?.run { if (type == "image") "image/$subtype" else null }
-            // Else guess from the uri.
-            ?: context.contentResolver.getType(file.uri)
-            // Else read magic numbers.
-            ?: ImageUtil.findImageType { file.openInputStream() }?.mime
-
-        return ImageUtil.getExtensionFromMimeType(mime)
+        return ImageUtil.getExtensionFromMimeType(mime) { file.openInputStream() }
     }
 
     private fun splitTallImageIfNeeded(page: Page, tmpDir: UniFile) {
@@ -641,25 +636,9 @@ class MangaDownloader(
         tmpDir: UniFile,
     ) {
         val zip = mangaDir.createFile("$dirname.cbz$TMP_DIR_SUFFIX")!!
-        ZipOutputStream(BufferedOutputStream(zip.openOutputStream())).use { zipOut ->
-            zipOut.setMethod(ZipEntry.STORED)
-
-            tmpDir.listFiles()?.forEach { img ->
-                img.openInputStream().use { input ->
-                    val data = input.readBytes()
-                    val size = img.length()
-                    val entry = ZipEntry(img.name).apply {
-                        val crc = CRC32().apply {
-                            update(data)
-                        }
-                        setCrc(crc.value)
-
-                        compressedSize = size
-                        setSize(size)
-                    }
-                    zipOut.putNextEntry(entry)
-                    zipOut.write(data)
-                }
+        ZipWriter(context, zip).use { writer ->
+            tmpDir.listFiles()?.forEach { file ->
+                writer.write(file)
             }
         }
         zip.renameTo("$dirname.cbz")
@@ -675,11 +654,24 @@ class MangaDownloader(
         chapter: Chapter,
         source: HttpSource,
     ) {
-        val chapterUrl = source.getChapterUrl(chapter.toSChapter())
         val categories = getCategories.await(manga.id).map { it.name.trim() }.takeUnless { it.isEmpty() }
-        val comicInfo = getComicInfo(manga, chapter, chapterUrl, categories)
+        val urls = getMangaTracks.await(manga.id)
+            .mapNotNull { track ->
+                track.remoteUrl.takeUnless { url -> url.isBlank() }?.trim()
+            }
+            .plus(source.getChapterUrl(chapter.toSChapter()).trim())
+            .distinct()
+
+        val comicInfo = getComicInfo(
+            manga,
+            chapter,
+            urls,
+            categories,
+            source.name,
+        )
+
         // Remove the old file
-        dir.findFile(COMIC_INFO_FILE, true)?.delete()
+        dir.findFile(COMIC_INFO_FILE)?.delete()
         dir.createFile(COMIC_INFO_FILE)!!.openOutputStream().use {
             val comicInfoString = xml.encodeToString(ComicInfo.serializer(), comicInfo)
             it.write(comicInfoString.toByteArray())
@@ -737,7 +729,7 @@ class MangaDownloader(
         removeFromQueueIf { it.manga.id == manga.id }
     }
 
-    private fun _clearQueue() {
+    private fun internalClearQueue() {
         _queueState.update {
             it.forEach { download ->
                 if (download.status == MangaDownload.State.DOWNLOADING ||
@@ -761,7 +753,7 @@ class MangaDownloader(
         }
 
         pause()
-        _clearQueue()
+        internalClearQueue()
         addAllToQueue(downloads)
 
         if (wasRunning) {

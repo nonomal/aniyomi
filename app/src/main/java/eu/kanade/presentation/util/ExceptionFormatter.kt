@@ -1,10 +1,9 @@
 package eu.kanade.presentation.util
 
 import android.content.Context
-import eu.kanade.tachiyomi.animesource.online.LicensedEntryItemsException
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.util.system.isOnline
-import tachiyomi.core.i18n.stringResource
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.items.chapter.model.NoChaptersException
 import tachiyomi.domain.items.episode.model.NoEpisodesException
 import tachiyomi.domain.source.anime.model.AnimeSourceNotInstalledException
@@ -29,9 +28,6 @@ val Throwable.formattedMessage: String
             )
             is SourceNotInstalledException, is AnimeSourceNotInstalledException -> return stringResource(
                 MR.strings.loader_not_implemented_error,
-            )
-            is LicensedEntryItemsException -> return stringResource(
-                MR.strings.licensed_manga_chapters_error,
             )
         }
         return when (val className = this::class.simpleName) {

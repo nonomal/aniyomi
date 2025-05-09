@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.VideoSettings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -28,7 +29,7 @@ import eu.kanade.presentation.components.WarningBanner
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.core.Constants
+import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.ui.more.DownloadQueueState
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
@@ -51,6 +52,7 @@ fun MoreScreen(
     onClickStats: () -> Unit,
     onClickStorage: () -> Unit,
     onClickDataAndStorage: () -> Unit,
+    onClickPlayerSettings: () -> Unit,
     onClickSettings: () -> Unit,
     onClickAbout: () -> Unit,
 ) {
@@ -176,6 +178,13 @@ fun MoreScreen(
                     title = stringResource(MR.strings.label_settings),
                     icon = Icons.Outlined.Settings,
                     onPreferenceClick = onClickSettings,
+                )
+            }
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.label_player_settings),
+                    icon = Icons.Outlined.VideoSettings,
+                    onPreferenceClick = onClickPlayerSettings,
                 )
             }
             item {

@@ -10,7 +10,10 @@ data class BackupOptions(
     val chapters: Boolean = true,
     val tracking: Boolean = true,
     val history: Boolean = true,
+    val readEntries: Boolean = true,
     val appSettings: Boolean = true,
+    val extensionRepoSettings: Boolean = true,
+    val customButton: Boolean = true,
     val sourceSettings: Boolean = true,
     val privateSettings: Boolean = false,
     val extensions: Boolean = false,
@@ -22,13 +25,21 @@ data class BackupOptions(
         chapters,
         tracking,
         history,
+        readEntries,
         appSettings,
+        extensionRepoSettings,
+        customButton,
         sourceSettings,
         privateSettings,
         extensions,
     )
 
-    fun anyEnabled() = libraryEntries || appSettings || sourceSettings
+    fun canCreate() = libraryEntries ||
+        categories ||
+        appSettings ||
+        extensionRepoSettings ||
+        customButton ||
+        sourceSettings
 
     companion object {
         val libraryOptions = persistentListOf(
@@ -36,12 +47,6 @@ data class BackupOptions(
                 label = MR.strings.entries,
                 getter = BackupOptions::libraryEntries,
                 setter = { options, enabled -> options.copy(libraryEntries = enabled) },
-            ),
-            Entry(
-                label = MR.strings.categories,
-                getter = BackupOptions::categories,
-                setter = { options, enabled -> options.copy(categories = enabled) },
-                enabled = { it.libraryEntries },
             ),
             Entry(
                 label = MR.strings.chapters_episodes,
@@ -61,6 +66,17 @@ data class BackupOptions(
                 setter = { options, enabled -> options.copy(history = enabled) },
                 enabled = { it.libraryEntries },
             ),
+            Entry(
+                label = MR.strings.categories,
+                getter = BackupOptions::categories,
+                setter = { options, enabled -> options.copy(categories = enabled) },
+            ),
+            Entry(
+                label = MR.strings.non_library_settings,
+                getter = BackupOptions::readEntries,
+                setter = { options, enabled -> options.copy(readEntries = enabled) },
+                enabled = { it.libraryEntries },
+            ),
         )
 
         val settingsOptions = persistentListOf(
@@ -68,6 +84,16 @@ data class BackupOptions(
                 label = MR.strings.app_settings,
                 getter = BackupOptions::appSettings,
                 setter = { options, enabled -> options.copy(appSettings = enabled) },
+            ),
+            Entry(
+                label = MR.strings.extensionRepo_settings,
+                getter = BackupOptions::extensionRepoSettings,
+                setter = { options, enabled -> options.copy(extensionRepoSettings = enabled) },
+            ),
+            Entry(
+                label = MR.strings.custom_button_settings,
+                getter = BackupOptions::customButton,
+                setter = { options, enabled -> options.copy(customButton = enabled) },
             ),
             Entry(
                 label = MR.strings.source_settings,
@@ -96,10 +122,13 @@ data class BackupOptions(
             chapters = array[2],
             tracking = array[3],
             history = array[4],
-            appSettings = array[5],
-            sourceSettings = array[6],
-            privateSettings = array[7],
-            extensions = array[8],
+            readEntries = array[5],
+            appSettings = array[6],
+            extensionRepoSettings = array[7],
+            customButton = array[8],
+            sourceSettings = array[9],
+            privateSettings = array[10],
+            extensions = array[11],
         )
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.ButtonDefaults
@@ -28,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.StateScreenModel
@@ -55,6 +55,7 @@ import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.model.MangaTrackSearch
 import eu.kanade.tachiyomi.util.lang.convertEpochMillisZone
+import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
@@ -65,11 +66,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.launchNonCancellable
-import tachiyomi.core.util.lang.withIOContext
-import tachiyomi.core.util.lang.withUIContext
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withIOContext
+import tachiyomi.core.common.util.lang.withUIContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.manga.interactor.GetManga
 import tachiyomi.domain.source.manga.service.MangaSourceManager
 import tachiyomi.domain.track.manga.interactor.DeleteMangaTrack
@@ -175,6 +176,7 @@ data class MangaTrackInfoDialogHomeScreen(
                     ),
                 )
             },
+            onCopyLink = { context.copyTrackerLink(it) },
         )
     }
 
@@ -185,6 +187,13 @@ data class MangaTrackInfoDialogHomeScreen(
         val url = trackItem.track?.remoteUrl ?: return
         if (url.isNotBlank()) {
             context.openInBrowser(url)
+        }
+    }
+
+    private fun Context.copyTrackerLink(trackItem: MangaTrackItem) {
+        val url = trackItem.track?.remoteUrl ?: return
+        if (url.isNotBlank()) {
+            copyToClipboard(url, url)
         }
     }
 
@@ -250,8 +259,8 @@ data class MangaTrackInfoDialogHomeScreen(
         }
 
         private fun List<MangaTrack>.mapToTrackItem(): List<MangaTrackItem> {
-            val loggedInTrackers = Injekt.get<TrackerManager>().trackers.filter {
-                it.isLoggedIn && it is MangaTracker
+            val loggedInTrackers = Injekt.get<TrackerManager>().loggedInTrackers().filter {
+                it is MangaTracker
             }
             val source = Injekt.get<MangaSourceManager>().getOrStub(sourceId)
             return loggedInTrackers
@@ -301,7 +310,9 @@ private data class TrackStatusSelectorScreen(
     ) : StateScreenModel<Model.State>(State(track.status)) {
 
         fun getSelections(): Map<Long, StringResource?> {
-            return tracker.mangaService.getStatusListManga().associateWith { tracker.getStatus(it) }
+            return tracker.mangaService.getStatusListManga().associateWith {
+                (tracker as? MangaTracker)?.getStatusForManga(it)
+            }
         }
 
         fun setSelection(selection: Long) {
@@ -444,6 +455,7 @@ private data class TrackDateSelectorScreen(
     private val start: Boolean,
 ) : Screen() {
 
+    @Transient
     private val selectableDates = object : SelectableDates {
         override fun isSelectableDate(utcTimeMillis: Long): Boolean {
             val dateToCheck = Instant.ofEpochMilli(utcTimeMillis)
@@ -678,11 +690,10 @@ data class TrackServiceSearchScreen(
 
         val state by screenModel.state.collectAsState()
 
-        var textFieldValue by remember { mutableStateOf(TextFieldValue(initialQuery)) }
+        val textFieldState = rememberTextFieldState(initialQuery)
         MangaTrackerSearch(
-            query = textFieldValue,
-            onQueryChange = { textFieldValue = it },
-            onDispatchQuery = { screenModel.trackingSearch(textFieldValue.text) },
+            state = textFieldState,
+            onDispatchQuery = { screenModel.trackingSearch(textFieldState.text.toString()) },
             queryResult = state.queryResult,
             selected = state.selected,
             onSelectedChange = screenModel::updateSelection,
@@ -836,7 +847,11 @@ private data class TrackerMangaRemoveScreen(
 
         fun deleteMangaFromService() {
             screenModelScope.launchNonCancellable {
-                (tracker as DeletableMangaTracker).delete(track)
+                try {
+                    (tracker as DeletableMangaTracker).delete(track)
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Failed to delete manga entry from service" }
+                }
             }
         }
 

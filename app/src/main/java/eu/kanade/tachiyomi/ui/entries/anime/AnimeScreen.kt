@@ -16,10 +16,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.core.util.ifAnimeSourcesLoaded
 import eu.kanade.domain.entries.anime.model.hasCustomCover
 import eu.kanade.domain.entries.anime.model.toSAnime
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
@@ -32,6 +35,7 @@ import eu.kanade.presentation.entries.anime.EpisodeSettingsDialog
 import eu.kanade.presentation.entries.anime.components.AnimeCoverDialog
 import eu.kanade.presentation.entries.components.DeleteItemsDialog
 import eu.kanade.presentation.entries.components.SetIntervalDialog
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen.SkipIntroLengthDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.formatEpisodeNumber
@@ -39,6 +43,8 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.source.anime.isLocalOrStub
+import eu.kanade.tachiyomi.ui.browse.anime.migration.search.MigrateAnimeDialog
+import eu.kanade.tachiyomi.ui.browse.anime.migration.search.MigrateAnimeDialogScreenModel
 import eu.kanade.tachiyomi.ui.browse.anime.migration.search.MigrateAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.browse.anime.source.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.ui.browse.anime.source.globalsearch.GlobalAnimeSearchScreen
@@ -47,7 +53,6 @@ import eu.kanade.tachiyomi.ui.entries.anime.track.AnimeTrackInfoDialogHomeScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.library.anime.AnimeLibraryTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
-import eu.kanade.tachiyomi.ui.player.settings.dialogs.SkipIntroLengthDialog
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.copyToClipboard
@@ -55,10 +60,10 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import logcat.LogPriority
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.launchIO
-import tachiyomi.core.util.lang.withIOContext
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.withIOContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.items.episode.model.Episode
 import tachiyomi.i18n.MR
@@ -76,13 +81,20 @@ class AnimeScreen(
 
     @Composable
     override fun Content() {
+        if (!ifAnimeSourcesLoaded()) {
+            LoadingScreen()
+            return
+        }
+
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val haptic = LocalHapticFeedback.current
         val scope = rememberCoroutineScope()
-        val screenModel = rememberScreenModel { AnimeScreenModel(context, animeId, fromSource) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val screenModel =
+            rememberScreenModel { AnimeScreenModel(context, lifecycleOwner.lifecycle, animeId, fromSource) }
 
-        val state by screenModel.state.collectAsState()
+        val state by screenModel.state.collectAsStateWithLifecycle()
 
         if (state is AnimeScreenModel.State.Loading) {
             LoadingScreen()
@@ -140,7 +152,7 @@ class AnimeScreen(
                 )
             }.takeIf { isAnimeHttpSource },
             onTrackingClicked = {
-                if (screenModel.loggedInTrackers.isEmpty()) {
+                if (!successState.hasLoggedInTrackers) {
                     navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
                 } else {
                     screenModel.showTrackDialog()
@@ -196,7 +208,7 @@ class AnimeScreen(
                 ChangeCategoryDialog(
                     initialSelection = dialog.initialSelection,
                     onDismissRequest = onDismissRequest,
-                    onEditCategories = { navigator.push(CategoriesTab(false)) },
+                    onEditCategories = { navigator.push(CategoriesTab) },
                     onConfirm = { include, _ ->
                         screenModel.moveAnimeToCategoriesAndAddToLibrary(dialog.anime, include)
                     },
@@ -212,11 +224,28 @@ class AnimeScreen(
                     isManga = false,
                 )
             }
-            is AnimeScreenModel.Dialog.DuplicateAnime -> DuplicateAnimeDialog(
-                onDismissRequest = onDismissRequest,
-                onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
-                onOpenAnime = { navigator.push(AnimeScreen(dialog.duplicate.id)) },
-            )
+
+            is AnimeScreenModel.Dialog.DuplicateAnime -> {
+                DuplicateAnimeDialog(
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
+                    onOpenAnime = { navigator.push(AnimeScreen(dialog.duplicate.id)) },
+                    onMigrate = {
+                        screenModel.showMigrateDialog(dialog.duplicate)
+                    },
+                )
+            }
+
+            is AnimeScreenModel.Dialog.Migrate -> {
+                MigrateAnimeDialog(
+                    oldAnime = dialog.oldAnime,
+                    newAnime = dialog.newAnime,
+                    screenModel = MigrateAnimeDialogScreenModel(),
+                    onDismissRequest = onDismissRequest,
+                    onClickTitle = { navigator.push(AnimeScreen(dialog.oldAnime.id)) },
+                    onPopScreen = { navigator.replace(AnimeScreen(dialog.newAnime.id)) },
+                )
+            }
             AnimeScreenModel.Dialog.SettingsSheet -> EpisodeSettingsDialog(
                 onDismissRequest = onDismissRequest,
                 anime = successState.anime,
@@ -249,7 +278,7 @@ class AnimeScreen(
                         sm.editCover(context, it)
                     }
                     AnimeCoverDialog(
-                        coverDataProvider = { anime!! },
+                        anime = anime!!,
                         snackbarHostState = sm.snackbarHostState,
                         isCustomCover = remember(anime) { anime!!.hasCustomCover() },
                         onShareClick = { sm.shareCover(context) },
@@ -283,11 +312,18 @@ class AnimeScreen(
                     }
                 }
                 SkipIntroLengthDialog(
-                    currentSkipIntroLength = successState.anime.skipIntroLength,
-                    defaultSkipIntroLength = screenModel.playerPreferences.defaultIntroLength().get(),
-                    fromPlayer = false,
-                    updateSkipIntroLength = ::updateSkipIntroLength,
+                    initialSkipIntroLength = if (!successState.anime.skipIntroDisable &&
+                        successState.anime.skipIntroLength == 0
+                    ) {
+                        screenModel.gesturePreferences.defaultIntroLength().get()
+                    } else {
+                        successState.anime.skipIntroLength
+                    },
                     onDismissRequest = onDismissRequest,
+                    onValueChanged = {
+                        updateSkipIntroLength(it.toLong())
+                        onDismissRequest()
+                    },
                 )
             }
             is AnimeScreenModel.Dialog.ShowQualities -> {

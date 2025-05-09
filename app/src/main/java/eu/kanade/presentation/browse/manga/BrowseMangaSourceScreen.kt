@@ -24,7 +24,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.MangaSource
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.StateFlow
-import tachiyomi.core.i18n.stringResource
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.source.manga.model.StubMangaSource
@@ -41,6 +41,8 @@ fun BrowseSourceContent(
     source: MangaSource?,
     mangaList: LazyPagingItems<StateFlow<Manga>>,
     columns: GridCells,
+    entries: Int = 0,
+    topBarHeight: Int = 0,
     displayMode: LibraryDisplayMode,
     snackbarHostState: SnackbarHostState,
     contentPadding: PaddingValues,
@@ -129,6 +131,8 @@ fun BrowseSourceContent(
         LibraryDisplayMode.List -> {
             BrowseMangaSourceList(
                 mangaList = mangaList,
+                entries = entries,
+                topBarHeight = topBarHeight,
                 contentPadding = contentPadding,
                 onMangaClick = onMangaClick,
                 onMangaLongClick = onMangaLongClick,

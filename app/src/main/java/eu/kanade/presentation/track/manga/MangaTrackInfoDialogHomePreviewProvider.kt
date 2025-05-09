@@ -5,7 +5,8 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import eu.kanade.tachiyomi.ui.entries.manga.track.MangaTrackItem
 import eu.kanade.test.DummyTracker
 import tachiyomi.domain.track.manga.model.MangaTrack
-import java.text.DateFormat
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 internal class MangaTrackInfoDialogHomePreviewProvider :
     PreviewParameterProvider<@Composable () -> Unit> {
@@ -46,7 +47,7 @@ internal class MangaTrackInfoDialogHomePreviewProvider :
                 trackItemWithoutTrack,
                 trackItemWithTrack,
             ),
-            dateFormat = DateFormat.getDateInstance(),
+            dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM),
             onStatusClick = {},
             onChapterClick = {},
             onScoreClick = {},
@@ -55,13 +56,14 @@ internal class MangaTrackInfoDialogHomePreviewProvider :
             onNewSearch = {},
             onOpenInBrowser = {},
             onRemoved = {},
+            onCopyLink = {},
         )
     }
 
     private val noTrackers = @Composable {
         MangaTrackInfoDialogHome(
             trackItems = listOf(),
-            dateFormat = DateFormat.getDateInstance(),
+            dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM),
             onStatusClick = {},
             onChapterClick = {},
             onScoreClick = {},
@@ -70,6 +72,7 @@ internal class MangaTrackInfoDialogHomePreviewProvider :
             onNewSearch = {},
             onOpenInBrowser = {},
             onRemoved = {},
+            onCopyLink = {},
         )
     }
 

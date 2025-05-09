@@ -4,12 +4,13 @@ import eu.kanade.domain.track.manga.model.toDbTrack
 import eu.kanade.tachiyomi.data.track.EnhancedMangaTracker
 import eu.kanade.tachiyomi.data.track.MangaTracker
 import logcat.LogPriority
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.items.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.items.chapter.interactor.UpdateChapter
 import tachiyomi.domain.items.chapter.model.toChapterUpdate
 import tachiyomi.domain.track.manga.interactor.InsertMangaTrack
 import tachiyomi.domain.track.manga.model.MangaTrack
+import kotlin.math.max
 
 class SyncChapterProgressWithTrack(
     private val updateChapter: UpdateChapter,
@@ -36,7 +37,8 @@ class SyncChapterProgressWithTrack(
 
         // only take into account continuous reading
         val localLastRead = sortedChapters.takeWhile { it.read }.lastOrNull()?.chapterNumber ?: 0F
-        val updatedTrack = remoteTrack.copy(lastChapterRead = localLastRead.toDouble())
+        val lastRead = max(remoteTrack.lastChapterRead, localLastRead.toDouble())
+        val updatedTrack = remoteTrack.copy(lastChapterRead = lastRead)
 
         try {
             tracker.update(updatedTrack.toDbTrack())

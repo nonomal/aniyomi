@@ -18,10 +18,11 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.core.util.ifMangaSourcesLoaded
 import eu.kanade.presentation.browse.manga.BrowseSourceContent
 import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.core.Constants
+import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreenModel
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.SourceFilterMangaDialog
@@ -34,6 +35,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.entries.manga.LocalMangaSource
 
 data class MangaSourceSearchScreen(
@@ -44,6 +46,11 @@ data class MangaSourceSearchScreen(
 
     @Composable
     override fun Content() {
+        if (!ifMangaSourcesLoaded()) {
+            LoadingScreen()
+            return
+        }
+
         val uriHandler = LocalUriHandler.current
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
@@ -76,7 +83,7 @@ data class MangaSourceSearchScreen(
         ) { paddingValues ->
             val pagingFlow by screenModel.mangaPagerFlowFlow.collectAsState()
             val openMigrateDialog: (Manga) -> Unit = {
-                screenModel.setDialog(BrowseMangaSourceScreenModel.Dialog.Migrate(it))
+                screenModel.setDialog(BrowseMangaSourceScreenModel.Dialog.Migrate(newManga = it, oldManga = oldManga))
             }
             BrowseSourceContent(
                 source = screenModel.source,

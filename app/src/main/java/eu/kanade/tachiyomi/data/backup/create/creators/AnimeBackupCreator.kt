@@ -19,7 +19,7 @@ class AnimeBackupCreator(
     private val getHistory: GetAnimeHistory = Injekt.get(),
 ) {
 
-    suspend fun backupAnimes(animes: List<Anime>, options: BackupOptions): List<BackupAnime> {
+    suspend operator fun invoke(animes: List<Anime>, options: BackupOptions): List<BackupAnime> {
         return animes.map {
             backupAnime(it, options)
         }
@@ -91,4 +91,5 @@ private fun Anime.toBackupAnime() =
         updateStrategy = this.updateStrategy,
         lastModifiedAt = this.lastModifiedAt,
         favoriteModifiedAt = this.favoriteModifiedAt,
+        version = this.version,
     )

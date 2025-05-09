@@ -7,12 +7,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.presentation.more.settings.widget.EditTextPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.InfoWidget
 import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
@@ -23,8 +23,6 @@ import eu.kanade.presentation.more.settings.widget.TrackingPreferenceWidget
 import kotlinx.coroutines.launch
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 val LocalPreferenceHighlighted = compositionLocalOf(structuralEqualityPolicy()) { false }
 val LocalPreferenceMinHeight = compositionLocalOf(structuralEqualityPolicy()) { 56.dp }
@@ -171,17 +169,49 @@ internal fun PreferenceItem(
                     canBeBlank = item.canBeBlank,
                 )
             }
+            is Preference.PreferenceItem.MPVConfPreference -> {
+                val values by item.pref.collectAsState()
+                EditTextPreferenceWidget(
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    icon = item.icon,
+                    value = values,
+                    onConfirm = {
+                        val accepted = item.onValueChanged(it)
+                        if (accepted) item.pref.set(it)
+                        accepted
+                    },
+                    singleLine = false,
+                    canBeBlank = item.canBeBlank,
+                    formatSubtitle = false,
+                )
+            }
+            is Preference.PreferenceItem.EditTextInfoPreference -> {
+                val values by item.pref.collectAsState()
+                EditTextPreferenceWidget(
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    dialogSubtitle = item.dialogSubtitle,
+                    icon = item.icon,
+                    value = values,
+                    onConfirm = {
+                        val accepted = item.onValueChanged(it)
+                        if (accepted) item.pref.set(it)
+                        accepted
+                    },
+                    singleLine = true,
+                    canBeBlank = true,
+                )
+            }
             is Preference.PreferenceItem.TrackerPreference -> {
-                val uName by Injekt.get<TrackPreferences>()
-                    .trackUsername(item.tracker)
-                    .collectAsState()
-                item.tracker.run {
-                    TrackingPreferenceWidget(
-                        tracker = this,
-                        checked = uName.isNotEmpty(),
-                        onClick = { if (isLoggedIn) item.logout() else item.login() },
-                    )
+                val isLoggedIn by item.tracker.let { tracker ->
+                    tracker.isLoggedInFlow.collectAsState(tracker.isLoggedIn)
                 }
+                TrackingPreferenceWidget(
+                    tracker = item.tracker,
+                    checked = isLoggedIn,
+                    onClick = { if (isLoggedIn) item.logout() else item.login() },
+                )
             }
             is Preference.PreferenceItem.InfoPreference -> {
                 InfoWidget(text = item.title)

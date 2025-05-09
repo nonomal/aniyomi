@@ -6,8 +6,8 @@ import androidx.compose.ui.unit.dp
 
 val topSmallPaddingValues = PaddingValues(top = MaterialTheme.padding.small)
 
-const val ReadItemAlpha = .38f
-const val SecondaryItemAlpha = .78f
+const val DISABLED_ALPHA = .38f
+const val SECONDARY_ALPHA = .78f
 
 class Padding {
 
@@ -16,6 +16,8 @@ class Padding {
     val large = 24.dp
 
     val medium = 16.dp
+
+    val mediumSmall = 12.dp
 
     val small = 8.dp
 

@@ -39,17 +39,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import tachiyomi.core.preference.CheckboxState
-import tachiyomi.core.preference.TriState
-import tachiyomi.core.util.lang.compareToWithCollator
-import tachiyomi.core.util.lang.launchIO
-import tachiyomi.core.util.lang.launchNonCancellable
-import tachiyomi.core.util.lang.withIOContext
+import tachiyomi.core.common.preference.CheckboxState
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.core.common.util.lang.compareToWithCollator
+import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.category.manga.interactor.GetVisibleMangaCategories
 import tachiyomi.domain.category.manga.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -71,7 +72,7 @@ import tachiyomi.domain.track.manga.model.MangaTrack
 import tachiyomi.source.local.entries.manga.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Collections
+import kotlin.random.Random
 
 /**
  * Typealias for the library manga, using the category as keys, and list of manga as values.
@@ -108,16 +109,14 @@ class MangaLibraryScreenModel(
                 getTracksPerManga.subscribe(),
                 getTrackingFilterFlow(),
                 downloadCache.changes,
-            ) { searchQuery, library, tracks, loggedInTrackers, _ ->
+            ) { searchQuery, library, tracks, trackingFilter, _ ->
                 library
-                    .applyFilters(tracks, loggedInTrackers)
-                    .applySort(tracks)
+                    .applyFilters(tracks, trackingFilter)
+                    .applySort(tracks, trackingFilter.keys)
                     .mapValues { (_, value) ->
                         if (searchQuery != null) {
-                            // Filter query
                             value.filter { it.matches(searchQuery) }
                         } else {
-                            // Don't do anything
                             value
                         }
                     }
@@ -172,12 +171,9 @@ class MangaLibraryScreenModel(
             .launchIn(screenModelScope)
     }
 
-    /**
-     * Applies library filters to the given map of manga.
-     */
     private suspend fun MangaLibraryMap.applyFilters(
         trackMap: Map<Long, List<MangaTrack>>,
-        loggedInTrackers: Map<Long, TriState>,
+        trackingFilter: Map<Long, TriState>,
     ): MangaLibraryMap {
         val prefs = getLibraryItemPreferencesFlow().first()
         val downloadedOnly = prefs.globalFilterDownloaded
@@ -189,10 +185,10 @@ class MangaLibraryScreenModel(
         val filterCompleted = prefs.filterCompleted
         val filterIntervalCustom = prefs.filterIntervalCustom
 
-        val isNotLoggedInAnyTrack = loggedInTrackers.isEmpty()
+        val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
 
-        val excludedTracks = loggedInTrackers.mapNotNull { if (it.value == TriState.ENABLED_NOT) it.key else null }
-        val includedTracks = loggedInTrackers.mapNotNull { if (it.value == TriState.ENABLED_IS) it.key else null }
+        val excludedTracks = trackingFilter.mapNotNull { if (it.value == TriState.ENABLED_NOT) it.key else null }
+        val includedTracks = trackingFilter.mapNotNull { if (it.value == TriState.ENABLED_IS) it.key else null }
         val trackFiltersIsIgnored = includedTracks.isEmpty() && excludedTracks.isEmpty()
 
         val filterFnDownloaded: (MangaLibraryItem) -> Boolean = {
@@ -250,15 +246,12 @@ class MangaLibraryScreenModel(
                 filterFnTracking(it)
         }
 
-        return this.mapValues { entry -> entry.value.fastFilter(filterFn) }
+        return mapValues { (_, value) -> value.fastFilter(filterFn) }
     }
 
-    /**
-     * Applies library sorting to the given map of manga.
-     */
     private fun MangaLibraryMap.applySort(
-        // Map<MangaId, List<Track>>
         trackMap: Map<Long, List<MangaTrack>>,
+        loggedInTrackerIds: Set<Long>,
     ): MangaLibraryMap {
         val sortAlphabetically: (MangaLibraryItem, MangaLibraryItem) -> Int = { i1, i2 ->
             i1.libraryManga.manga.title.lowercase().compareToWithCollator(i2.libraryManga.manga.title.lowercase())
@@ -266,7 +259,7 @@ class MangaLibraryScreenModel(
 
         val defaultTrackerScoreSortValue = -1.0
         val trackerScores by lazy {
-            val trackerMap = trackerManager.loggedInTrackers().associateBy { e -> e.id }
+            val trackerMap = trackerManager.getAll(loggedInTrackerIds).associateBy { e -> e.id }
             trackMap.mapValues { entry ->
                 when {
                     entry.value.isEmpty() -> null
@@ -278,9 +271,8 @@ class MangaLibraryScreenModel(
             }
         }
 
-        val sortFn: (MangaLibraryItem, MangaLibraryItem) -> Int = { i1, i2 ->
-            val sort = keys.find { it.id == i1.libraryManga.category }!!.sort
-            when (sort.type) {
+        fun MangaLibrarySort.comparator(): Comparator<MangaLibraryItem> = Comparator { i1, i2 ->
+            when (this.type) {
                 MangaLibrarySort.Type.Alphabetical -> {
                     sortAlphabetically(i1, i2)
                 }
@@ -293,8 +285,8 @@ class MangaLibraryScreenModel(
                 MangaLibrarySort.Type.UnreadCount -> when {
                     // Ensure unread content comes first
                     i1.libraryManga.unreadCount == i2.libraryManga.unreadCount -> 0
-                    i1.libraryManga.unreadCount == 0L -> if (sort.isAscending) 1 else -1
-                    i2.libraryManga.unreadCount == 0L -> if (sort.isAscending) -1 else 1
+                    i1.libraryManga.unreadCount == 0L -> if (this.isAscending) 1 else -1
+                    i2.libraryManga.unreadCount == 0L -> if (this.isAscending) -1 else 1
                     else -> i1.libraryManga.unreadCount.compareTo(i2.libraryManga.unreadCount)
                 }
                 MangaLibrarySort.Type.TotalChapters -> {
@@ -314,17 +306,22 @@ class MangaLibraryScreenModel(
                     val item2Score = trackerScores[i2.libraryManga.id] ?: defaultTrackerScoreSortValue
                     item1Score.compareTo(item2Score)
                 }
+                MangaLibrarySort.Type.Random -> {
+                    error("Why Are We Still Here? Just To Suffer?")
+                }
             }
         }
 
-        return this.mapValues { entry ->
-            val comparator = if (keys.find { it.id == entry.key.id }!!.sort.isAscending) {
-                Comparator(sortFn)
-            } else {
-                Collections.reverseOrder(sortFn)
+        return mapValues { (key, value) ->
+            if (key.sort.type == MangaLibrarySort.Type.Random) {
+                return@mapValues value.shuffled(Random(libraryPreferences.randomMangaSortSeed().get()))
             }
 
-            entry.value.sortedWith(comparator.thenComparator(sortAlphabetically))
+            val comparator = key.sort.comparator()
+                .let { if (key.sort.isAscending) it else it.reversed() }
+                .thenComparator(sortAlphabetically)
+
+            value.sortedWith(comparator)
         }
     }
 
@@ -407,18 +404,17 @@ class MangaLibraryScreenModel(
      * @return map of track id with the filter value
      */
     private fun getTrackingFilterFlow(): Flow<Map<Long, TriState>> {
-        val loggedInTrackers = trackerManager.loggedInTrackers()
-        return if (loggedInTrackers.isNotEmpty()) {
-            val prefFlows = loggedInTrackers
-                .map { libraryPreferences.filterTrackedManga(it.id.toInt()).changes() }
-                .toTypedArray()
-            combine(*prefFlows) {
+        return trackerManager.loggedInTrackersFlow().flatMapLatest { loggedInTrackers ->
+            if (loggedInTrackers.isEmpty()) return@flatMapLatest flowOf(emptyMap())
+
+            val prefFlows = loggedInTrackers.map { tracker ->
+                libraryPreferences.filterTrackedManga(tracker.id.toInt()).changes()
+            }
+            combine(prefFlows) {
                 loggedInTrackers
                     .mapIndexed { index, tracker -> tracker.id to it[index] }
                     .toMap()
             }
-        } else {
-            flowOf(emptyMap())
         }
     }
 

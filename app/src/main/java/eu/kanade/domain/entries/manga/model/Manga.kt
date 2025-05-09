@@ -5,9 +5,9 @@ import eu.kanade.tachiyomi.data.cache.MangaCoverCache
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
-import tachiyomi.core.preference.TriState
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.items.chapter.model.Chapter
 import uy.kohesive.injekt.Injekt
@@ -95,7 +95,13 @@ fun Manga.hasCustomCover(coverCache: MangaCoverCache = Injekt.get()): Boolean {
 /**
  * Creates a ComicInfo instance based on the manga and chapter metadata.
  */
-fun getComicInfo(manga: Manga, chapter: Chapter, chapterUrl: String, categories: List<String>?) = ComicInfo(
+fun getComicInfo(
+    manga: Manga,
+    chapter: Chapter,
+    urls: List<String>,
+    categories: List<String>?,
+    sourceName: String,
+) = ComicInfo(
     title = ComicInfo.Title(chapter.name),
     series = ComicInfo.Series(manga.title),
     number = chapter.chapterNumber.takeIf { it >= 0 }?.let {
@@ -105,7 +111,7 @@ fun getComicInfo(manga: Manga, chapter: Chapter, chapterUrl: String, categories:
             ComicInfo.Number(it.toString())
         }
     },
-    web = ComicInfo.Web(chapterUrl),
+    web = ComicInfo.Web(urls.joinToString(" ")),
     summary = manga.description?.let { ComicInfo.Summary(it) },
     writer = manga.author?.let { ComicInfo.Writer(it) },
     penciller = manga.artist?.let { ComicInfo.Penciller(it) },
@@ -115,6 +121,7 @@ fun getComicInfo(manga: Manga, chapter: Chapter, chapterUrl: String, categories:
         ComicInfoPublishingStatus.toComicInfoValue(manga.status),
     ),
     categories = categories?.let { ComicInfo.CategoriesTachiyomi(it.joinToString()) },
+    source = ComicInfo.SourceAniyomi(sourceName),
     inker = null,
     colorist = null,
     letterer = null,

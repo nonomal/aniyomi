@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -185,12 +184,6 @@ object SettingsMainScreen : Screen() {
             subtitleRes = MR.strings.pref_library_summary,
             icon = Icons.Outlined.CollectionsBookmark,
             screen = SettingsLibraryScreen,
-        ),
-        Item(
-            titleRes = MR.strings.pref_category_player,
-            subtitleRes = MR.strings.pref_player_summary,
-            icon = Icons.Outlined.PlayCircleOutline,
-            screen = SettingsPlayerScreen,
         ),
         Item(
             titleRes = MR.strings.pref_category_reader,

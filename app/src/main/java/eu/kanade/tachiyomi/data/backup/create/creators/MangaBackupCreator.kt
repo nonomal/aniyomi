@@ -20,7 +20,7 @@ class MangaBackupCreator(
     private val getHistory: GetMangaHistory = Injekt.get(),
 ) {
 
-    suspend fun backupMangas(mangas: List<Manga>, options: BackupOptions): List<BackupManga> {
+    suspend operator fun invoke(mangas: List<Manga>, options: BackupOptions): List<BackupManga> {
         return mangas.map {
             backupManga(it, options)
         }
@@ -98,4 +98,5 @@ private fun Manga.toBackupManga() =
         updateStrategy = this.updateStrategy,
         lastModifiedAt = this.lastModifiedAt,
         favoriteModifiedAt = this.favoriteModifiedAt,
+        version = this.version,
     )

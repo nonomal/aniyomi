@@ -14,7 +14,7 @@ import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
-import tachiyomi.core.i18n.stringResource
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
 import java.util.regex.Pattern
@@ -82,6 +82,11 @@ internal class MangaDownloadNotifier(private val context: Context) {
                     R.drawable.ic_pause_24dp,
                     context.stringResource(MR.strings.action_pause),
                     NotificationReceiver.pauseDownloadsPendingBroadcast(context),
+                )
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_manga),
+                    NotificationReceiver.openMangaEntryPendingActivity(context, download.manga.id),
                 )
             }
 
@@ -160,9 +165,10 @@ internal class MangaDownloadNotifier(private val context: Context) {
      *
      * @param reason the text to show.
      * @param timeout duration after which to automatically dismiss the notification.
+     * @param mangaId the id of the entry being warned about
      * Only works on Android 8+.
      */
-    fun onWarning(reason: String, timeout: Long? = null, contentIntent: PendingIntent? = null) {
+    fun onWarning(reason: String, timeout: Long? = null, contentIntent: PendingIntent? = null, mangaId: Long? = null) {
         with(errorNotificationBuilder) {
             setContentTitle(context.stringResource(MR.strings.download_notifier_downloader_title))
             setStyle(NotificationCompat.BigTextStyle().bigText(reason))
@@ -170,6 +176,13 @@ internal class MangaDownloadNotifier(private val context: Context) {
             setAutoCancel(true)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
+            if (mangaId != null) {
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_manga),
+                    NotificationReceiver.openMangaEntryPendingActivity(context, mangaId),
+                )
+            }
             setProgress(0, 0, false)
             timeout?.let { setTimeoutAfter(it) }
             contentIntent?.let { setContentIntent(it) }
@@ -187,8 +200,9 @@ internal class MangaDownloadNotifier(private val context: Context) {
      *
      * @param error string containing error information.
      * @param chapter string containing chapter title.
+     * @param mangaId the id of the entry that the error occurred on
      */
-    fun onError(error: String? = null, chapter: String? = null, mangaTitle: String? = null) {
+    fun onError(error: String? = null, chapter: String? = null, mangaTitle: String? = null, mangaId: Long? = null) {
         // Create notification
         with(errorNotificationBuilder) {
             setContentTitle(
@@ -200,6 +214,13 @@ internal class MangaDownloadNotifier(private val context: Context) {
             setSmallIcon(R.drawable.ic_warning_white_24dp)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
+            if (mangaId != null) {
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_manga),
+                    NotificationReceiver.openMangaEntryPendingActivity(context, mangaId),
+                )
+            }
             setProgress(0, 0, false)
 
             show(Notifications.ID_DOWNLOAD_CHAPTER_ERROR)

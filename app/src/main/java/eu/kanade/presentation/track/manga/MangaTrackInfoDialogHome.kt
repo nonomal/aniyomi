@@ -49,19 +49,19 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.track.components.TrackLogoIcon
+import eu.kanade.tachiyomi.data.track.MangaTracker
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.ui.entries.manga.track.MangaTrackItem
+import eu.kanade.tachiyomi.util.lang.toLocalDate
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
-import java.text.DateFormat
-
-private const val UnsetStatusTextAlpha = 0.5F
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun MangaTrackInfoDialogHome(
     trackItems: List<MangaTrackItem>,
-    dateFormat: DateFormat,
+    dateFormat: DateTimeFormatter,
     onStatusClick: (MangaTrackItem) -> Unit,
     onChapterClick: (MangaTrackItem) -> Unit,
     onScoreClick: (MangaTrackItem) -> Unit,
@@ -70,6 +70,7 @@ fun MangaTrackInfoDialogHome(
     onNewSearch: (MangaTrackItem) -> Unit,
     onOpenInBrowser: (MangaTrackItem) -> Unit,
     onRemoved: (MangaTrackItem) -> Unit,
+    onCopyLink: (MangaTrackItem) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -87,7 +88,7 @@ fun MangaTrackInfoDialogHome(
                 TrackInfoItem(
                     title = item.track.title,
                     tracker = item.tracker,
-                    status = item.tracker.getStatus(item.track.status),
+                    status = (item.tracker as? MangaTracker)?.getStatusForManga(item.track.status),
                     onStatusClick = { onStatusClick(item) },
                     chapters = "${item.track.lastChapterRead.toInt()}".let {
                         val totalChapters = item.track.totalChapters
@@ -105,19 +106,20 @@ fun MangaTrackInfoDialogHome(
                         .takeIf { supportsScoring },
                     startDate = remember(item.track.startDate) {
                         dateFormat.format(
-                            item.track.startDate,
+                            item.track.startDate.toLocalDate(),
                         )
                     }
                         .takeIf { supportsReadingDates && item.track.startDate != 0L },
                     onStartDateClick = { onStartDateEdit(item) } // TODO
                         .takeIf { supportsReadingDates },
-                    endDate = dateFormat.format(item.track.finishDate)
+                    endDate = dateFormat.format(item.track.finishDate.toLocalDate())
                         .takeIf { supportsReadingDates && item.track.finishDate != 0L },
                     onEndDateClick = { onEndDateEdit(item) }
                         .takeIf { supportsReadingDates },
                     onNewSearch = { onNewSearch(item) },
                     onOpenInBrowser = { onOpenInBrowser(item) },
                     onRemoved = { onRemoved(item) },
+                    onCopyLink = { onCopyLink(item) },
                 )
             } else {
                 TrackInfoItemEmpty(
@@ -146,6 +148,7 @@ private fun TrackInfoItem(
     onNewSearch: () -> Unit,
     onOpenInBrowser: () -> Unit,
     onRemoved: () -> Unit,
+    onCopyLink: () -> Unit,
 ) {
     val context = LocalContext.current
     Column {
@@ -155,6 +158,7 @@ private fun TrackInfoItem(
             TrackLogoIcon(
                 tracker = tracker,
                 onClick = onOpenInBrowser,
+                onLongClick = onCopyLink,
             )
             Box(
                 modifier = Modifier
@@ -181,6 +185,7 @@ private fun TrackInfoItem(
             TrackInfoItemMenu(
                 onOpenInBrowser = onOpenInBrowser,
                 onRemoved = onRemoved,
+                onCopyLink = onCopyLink,
             )
         }
 
@@ -188,7 +193,7 @@ private fun TrackInfoItem(
             modifier = Modifier
                 .padding(top = 12.dp)
                 .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                 .padding(8.dp)
                 .clip(RoundedCornerShape(6.dp)),
         ) {
@@ -208,10 +213,9 @@ private fun TrackInfoItem(
                     if (onScoreClick != null) {
                         VerticalDivider()
                         TrackDetailsItem(
-                            modifier = Modifier
-                                .weight(1f)
-                                .alpha(if (score == null) UnsetStatusTextAlpha else 1f),
-                            text = score ?: stringResource(MR.strings.score),
+                            modifier = Modifier.weight(1f),
+                            text = score,
+                            placeholder = stringResource(MR.strings.score),
                             onClick = onScoreClick,
                         )
                     }
@@ -240,6 +244,8 @@ private fun TrackInfoItem(
     }
 }
 
+private const val UNSET_TEXT_ALPHA = 0.5F
+
 @Composable
 fun TrackDetailsItem(
     text: String?,
@@ -260,7 +266,7 @@ fun TrackDetailsItem(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (text == null) UnsetStatusTextAlpha else 1f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (text == null) UNSET_TEXT_ALPHA else 1f),
         )
     }
 }
@@ -289,6 +295,7 @@ private fun TrackInfoItemEmpty(
 fun TrackInfoItemMenu(
     onOpenInBrowser: () -> Unit,
     onRemoved: () -> Unit,
+    onCopyLink: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
@@ -306,6 +313,13 @@ fun TrackInfoItemMenu(
                 text = { Text(stringResource(MR.strings.action_open_in_browser)) },
                 onClick = {
                     onOpenInBrowser()
+                    expanded = false
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.strings.action_copy_link)) },
+                onClick = {
+                    onCopyLink()
                     expanded = false
                 },
             )

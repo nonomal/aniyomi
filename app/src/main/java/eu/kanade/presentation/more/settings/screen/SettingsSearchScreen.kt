@@ -13,8 +13,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.HorizontalDivider
@@ -28,10 +30,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +43,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -51,6 +50,12 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.UpIcon
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAdvancedScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAudioScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsDecoderScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsPlayerScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsSubtitleScreen
 import eu.kanade.presentation.util.Screen
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -59,7 +64,9 @@ import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.util.runOnEnterKeyPressed
 import cafe.adriel.voyager.core.screen.Screen as VoyagerScreen
 
-class SettingsSearchScreen : Screen() {
+class SettingsSearchScreen(
+    val isPlayer: Boolean = false,
+) : Screen() {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
@@ -87,11 +94,7 @@ class SettingsSearchScreen : Screen() {
             focusRequester.requestFocus()
         }
 
-        var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-            mutableStateOf(
-                TextFieldValue(),
-            )
-        }
+        val textFieldState = rememberTextFieldState()
         Scaffold(
             topBar = {
                 Column {
@@ -106,24 +109,27 @@ class SettingsSearchScreen : Screen() {
                         },
                         title = {
                             BasicTextField(
-                                value = textFieldValue,
-                                onValueChange = { textFieldValue = it },
+                                state = textFieldState,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(focusRequester)
                                     .runOnEnterKeyPressed(action = focusManager::clearFocus),
                                 textStyle = MaterialTheme.typography.bodyLarge
                                     .copy(color = MaterialTheme.colorScheme.onSurface),
-                                singleLine = true,
+                                lineLimits = TextFieldLineLimits.SingleLine,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(
-                                    onSearch = { focusManager.clearFocus() },
-                                ),
+                                onKeyboardAction = { focusManager.clearFocus() },
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                decorationBox = {
-                                    if (textFieldValue.text.isEmpty()) {
+                                decorator = {
+                                    if (textFieldState.text.isEmpty()) {
                                         Text(
-                                            text = stringResource(MR.strings.action_search_settings),
+                                            text = stringResource(
+                                                resource = if (isPlayer) {
+                                                    MR.strings.action_search_player_settings
+                                                } else {
+                                                    MR.strings.action_search_settings
+                                                },
+                                            ),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             style = MaterialTheme.typography.bodyLarge,
                                         )
@@ -133,8 +139,8 @@ class SettingsSearchScreen : Screen() {
                             )
                         },
                         actions = {
-                            if (textFieldValue.text.isNotEmpty()) {
-                                IconButton(onClick = { textFieldValue = TextFieldValue() }) {
+                            if (textFieldState.text.isNotEmpty()) {
+                                IconButton(onClick = { textFieldState.clearText() }) {
                                     Icon(
                                         imageVector = Icons.Outlined.Close,
                                         contentDescription = null,
@@ -149,7 +155,8 @@ class SettingsSearchScreen : Screen() {
             },
         ) { contentPadding ->
             SearchResult(
-                searchKey = textFieldValue.text,
+                searchKey = textFieldState.text.toString(),
+                isPlayer = isPlayer,
                 listState = listState,
                 contentPadding = contentPadding,
             ) { result ->
@@ -163,6 +170,7 @@ class SettingsSearchScreen : Screen() {
 @Composable
 private fun SearchResult(
     searchKey: String,
+    isPlayer: Boolean,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(),
@@ -172,7 +180,7 @@ private fun SearchResult(
 
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
 
-    val index = getIndex()
+    val index = if (isPlayer) getPlayerIndex() else getIndex()
     val result by produceState<List<SearchResultItem>?>(initialValue = null, searchKey) {
         value = index.asSequence()
             .flatMap { settingsData ->
@@ -279,6 +287,17 @@ private fun getIndex() = settingScreens
         )
     }
 
+@Composable
+@NonRestartableComposable
+private fun getPlayerIndex() = playerSettingScreens
+    .map { screen ->
+        SettingsData(
+            title = stringResource(screen.getTitleRes()),
+            route = screen,
+            contents = screen.getPreferences(),
+        )
+    }
+
 private fun getLocalizedBreadcrumb(path: String, node: String?, isLtr: Boolean): String {
     return if (node == null) {
         path
@@ -293,18 +312,25 @@ private fun getLocalizedBreadcrumb(path: String, node: String?, isLtr: Boolean):
     }
 }
 
+private val playerSettingScreens = listOf(
+    PlayerSettingsPlayerScreen,
+    PlayerSettingsGesturesScreen,
+    PlayerSettingsDecoderScreen,
+    PlayerSettingsSubtitleScreen,
+    PlayerSettingsAudioScreen,
+    PlayerSettingsAdvancedScreen,
+)
+
 private val settingScreens = listOf(
     SettingsAppearanceScreen,
     SettingsLibraryScreen,
     SettingsReaderScreen,
-    SettingsPlayerScreen,
     SettingsDownloadScreen,
     SettingsTrackingScreen,
     SettingsBrowseScreen,
     SettingsDataScreen,
     SettingsSecurityScreen,
     SettingsAdvancedScreen,
-    AdvancedPlayerSettingsScreen,
 )
 
 private data class SettingsData(

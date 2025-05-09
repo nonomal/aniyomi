@@ -10,7 +10,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.calculateChapterGap
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.util.system.logcat
 
 /**
  * Pager adapter used by this [viewer] to where [ViewerChapters] updates are posted.
@@ -92,7 +92,8 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
         // Add next chapter transition and pages.
         nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
             .also {
-                if (nextHasMissingChapters || forceTransition ||
+                if (nextHasMissingChapters ||
+                    forceTransition ||
                     chapters.nextChapter?.state !is ReaderChapter.State.Loaded
                 ) {
                     newItems.add(it)

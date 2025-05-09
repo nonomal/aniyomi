@@ -33,29 +33,37 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.entries.components.ItemCover
-import tachiyomi.domain.entries.EntryCover
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.selectedBackground
+import tachiyomi.domain.entries.EntryCover as EntryCoverModel
 
 object CommonEntryItemDefaults {
     val GridHorizontalSpacer = 4.dp
     val GridVerticalSpacer = 4.dp
 
+    @Suppress("ConstPropertyName")
     const val BrowseFavoriteCoverAlpha = 0.34f
 }
 
-private val ContinueViewingButtonSize = 28.dp
+private val ContinueViewingButtonSizeSmall = 28.dp
+private val ContinueViewingButtonSizeLarge = 32.dp
+
+private val ContinueViewingButtonIconSizeSmall = 16.dp
+private val ContinueViewingButtonIconSizeLarge = 20.dp
+
 private val ContinueViewingButtonGridPadding = 6.dp
 private val ContinueViewingButtonListSpacing = 8.dp
 
-private const val GridSelectedCoverAlpha = 0.76f
+private const val GRID_SELECTED_COVER_ALPHA = 0.76f
 
 /**
  * Layout of grid list item with title overlaying the cover.
@@ -63,7 +71,7 @@ private const val GridSelectedCoverAlpha = 0.76f
  */
 @Composable
 fun EntryCompactGridItem(
-    coverData: EntryCover,
+    coverData: EntryCoverModel,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     isSelected: Boolean = false,
@@ -83,7 +91,7 @@ fun EntryCompactGridItem(
                 ItemCover.Book(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(if (isSelected) GridSelectedCoverAlpha else coverAlpha),
+                        .alpha(if (isSelected) GRID_SELECTED_COVER_ALPHA else coverAlpha),
                     data = coverData,
                 )
             },
@@ -97,10 +105,12 @@ fun EntryCompactGridItem(
                     )
                 } else if (onClickContinueViewing != null) {
                     ContinueViewingButton(
+                        size = ContinueViewingButtonSizeLarge,
+                        iconSize = ContinueViewingButtonIconSizeLarge,
+                        onClick = onClickContinueViewing,
                         modifier = Modifier
                             .padding(ContinueViewingButtonGridPadding)
                             .align(Alignment.BottomEnd),
-                        onClickContinueViewing = onClickContinueViewing,
                     )
                 }
             },
@@ -149,11 +159,13 @@ private fun BoxScope.CoverTextOverlay(
         )
         if (onClickContinueViewing != null) {
             ContinueViewingButton(
+                size = ContinueViewingButtonSizeSmall,
+                iconSize = ContinueViewingButtonIconSizeSmall,
+                onClick = onClickContinueViewing,
                 modifier = Modifier.padding(
                     end = ContinueViewingButtonGridPadding,
                     bottom = ContinueViewingButtonGridPadding,
                 ),
-                onClickContinueViewing = onClickContinueViewing,
             )
         }
     }
@@ -169,7 +181,7 @@ fun EntryComfortableGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     titleMaxLines: Int = 2,
-    coverData: EntryCover,
+    coverData: EntryCoverModel,
     coverAlpha: Float = 1f,
     coverBadgeStart: (@Composable RowScope.() -> Unit)? = null,
     coverBadgeEnd: (@Composable RowScope.() -> Unit)? = null,
@@ -186,7 +198,7 @@ fun EntryComfortableGridItem(
                     ItemCover.Book(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .alpha(if (isSelected) GridSelectedCoverAlpha else coverAlpha),
+                            .alpha(if (isSelected) GRID_SELECTED_COVER_ALPHA else coverAlpha),
                         data = coverData,
                     )
                 },
@@ -195,10 +207,12 @@ fun EntryComfortableGridItem(
                 content = {
                     if (onClickContinueViewing != null) {
                         ContinueViewingButton(
+                            size = ContinueViewingButtonSizeLarge,
+                            iconSize = ContinueViewingButtonIconSizeLarge,
+                            onClick = onClickContinueViewing,
                             modifier = Modifier
                                 .padding(ContinueViewingButtonGridPadding)
                                 .align(Alignment.BottomEnd),
-                            onClickContinueViewing = onClickContinueViewing,
                         )
                     }
                 },
@@ -310,7 +324,7 @@ private fun GridItemSelectable(
 private fun Modifier.selectedOutline(
     isSelected: Boolean,
     color: Color,
-) = this then drawBehind { if (isSelected) drawRect(color = color) }
+) = drawBehind { if (isSelected) drawRect(color = color) }
 
 /**
  * Layout of list item.
@@ -319,25 +333,35 @@ private fun Modifier.selectedOutline(
 fun EntryListItem(
     isSelected: Boolean = false,
     title: String,
-    coverData: EntryCover,
+    coverData: EntryCoverModel,
     coverAlpha: Float = 1f,
     onLongClick: () -> Unit,
     onClick: () -> Unit,
     badge: @Composable (RowScope.() -> Unit),
     onClickContinueViewing: (() -> Unit)? = null,
+    entries: Int = 0,
+    containerHeight: Int = 0,
 ) {
     Row(
         modifier = Modifier
             .selectedBackground(isSelected)
-            .height(56.dp)
+            .height(
+                when (entries) {
+                    0 -> 76.dp
+                    else -> {
+                        val density = LocalDensity.current
+                        with(density) { (containerHeight / entries).toDp() } - (3 / entries).dp
+                    }
+                },
+            )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ItemCover.Square(
+        ItemCover.Book(
             modifier = Modifier
                 .fillMaxHeight()
                 .alpha(coverAlpha),
@@ -348,15 +372,16 @@ fun EntryListItem(
             modifier = Modifier
                 .padding(horizontal = 16.dp)
                 .weight(1f),
-            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
         )
         BadgeGroup(content = badge)
         if (onClickContinueViewing != null) {
             ContinueViewingButton(
+                size = ContinueViewingButtonSizeSmall,
+                iconSize = ContinueViewingButtonIconSizeSmall,
+                onClick = onClickContinueViewing,
                 modifier = Modifier.padding(start = ContinueViewingButtonListSpacing),
-                onClickContinueViewing = onClickContinueViewing,
             )
         }
     }
@@ -364,23 +389,25 @@ fun EntryListItem(
 
 @Composable
 private fun ContinueViewingButton(
+    size: Dp,
+    iconSize: Dp,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onClickContinueViewing: () -> Unit,
 ) {
     Box(modifier = modifier) {
         FilledIconButton(
-            onClick = onClickContinueViewing,
-            modifier = Modifier.size(ContinueViewingButtonSize),
+            onClick = onClick,
             shape = MaterialTheme.shapes.small,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
                 contentColor = contentColorFor(MaterialTheme.colorScheme.primaryContainer),
             ),
+            modifier = Modifier.size(size),
         ) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
                 contentDescription = stringResource(MR.strings.action_resume),
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(iconSize),
             )
         }
     }

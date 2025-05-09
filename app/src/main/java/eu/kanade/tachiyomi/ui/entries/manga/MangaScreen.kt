@@ -18,10 +18,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.core.util.ifMangaSourcesLoaded
 import eu.kanade.domain.entries.manga.model.hasCustomCover
 import eu.kanade.domain.entries.manga.model.toSManga
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
@@ -40,6 +43,8 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.MangaSource
 import eu.kanade.tachiyomi.source.manga.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialog
+import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialogScreenModel
 import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaSearchScreen
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreen
 import eu.kanade.tachiyomi.ui.browse.manga.source.globalsearch.GlobalMangaSearchScreen
@@ -55,9 +60,9 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import logcat.LogPriority
-import tachiyomi.core.i18n.stringResource
-import tachiyomi.core.util.lang.withIOContext
-import tachiyomi.core.util.system.logcat
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.util.lang.withIOContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.entries.manga.model.Manga
 import tachiyomi.domain.items.chapter.model.Chapter
 import tachiyomi.i18n.MR
@@ -74,13 +79,20 @@ class MangaScreen(
 
     @Composable
     override fun Content() {
+        if (!ifMangaSourcesLoaded()) {
+            LoadingScreen()
+            return
+        }
+
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val haptic = LocalHapticFeedback.current
         val scope = rememberCoroutineScope()
-        val screenModel = rememberScreenModel { MangaScreenModel(context, mangaId, fromSource) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val screenModel =
+            rememberScreenModel { MangaScreenModel(context, lifecycleOwner.lifecycle, mangaId, fromSource) }
 
-        val state by screenModel.state.collectAsState()
+        val state by screenModel.state.collectAsStateWithLifecycle()
 
         if (state is MangaScreenModel.State.Loading) {
             LoadingScreen()
@@ -131,7 +143,7 @@ class MangaScreen(
                 )
             }.takeIf { isHttpSource },
             onTrackingClicked = {
-                if (screenModel.loggedInTrackers.isEmpty()) {
+                if (!successState.hasLoggedInTrackers) {
                     navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
                 } else {
                     screenModel.showTrackDialog()
@@ -177,7 +189,10 @@ class MangaScreen(
                 ChangeCategoryDialog(
                     initialSelection = dialog.initialSelection,
                     onDismissRequest = onDismissRequest,
-                    onEditCategories = { navigator.push(CategoriesTab(true)) },
+                    onEditCategories = {
+                        navigator.push(CategoriesTab)
+                        CategoriesTab.showMangaCategory()
+                    },
                     onConfirm = { include, _ ->
                         screenModel.moveMangaToCategoriesAndAddToLibrary(dialog.manga, include)
                     },
@@ -193,11 +208,28 @@ class MangaScreen(
                     isManga = true,
                 )
             }
-            is MangaScreenModel.Dialog.DuplicateManga -> DuplicateMangaDialog(
-                onDismissRequest = onDismissRequest,
-                onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
-                onOpenManga = { navigator.push(MangaScreen(dialog.duplicate.id)) },
-            )
+
+            is MangaScreenModel.Dialog.DuplicateManga -> {
+                DuplicateMangaDialog(
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
+                    onOpenManga = { navigator.push(MangaScreen(dialog.duplicate.id)) },
+                    onMigrate = {
+                        screenModel.showMigrateDialog(dialog.duplicate)
+                    },
+                )
+            }
+
+            is MangaScreenModel.Dialog.Migrate -> {
+                MigrateMangaDialog(
+                    oldManga = dialog.oldManga,
+                    newManga = dialog.newManga,
+                    screenModel = MigrateMangaDialogScreenModel(),
+                    onDismissRequest = onDismissRequest,
+                    onClickTitle = { navigator.push(MangaScreen(dialog.oldManga.id)) },
+                    onPopScreen = { navigator.replace(MangaScreen(dialog.newManga.id)) },
+                )
+            }
             MangaScreenModel.Dialog.SettingsSheet -> ChapterSettingsDialog(
                 onDismissRequest = onDismissRequest,
                 manga = successState.manga,
@@ -233,7 +265,7 @@ class MangaScreen(
                         sm.editCover(context, it)
                     }
                     MangaCoverDialog(
-                        coverDataProvider = { manga!! },
+                        manga = manga!!,
                         snackbarHostState = sm.snackbarHostState,
                         isCustomCover = remember(manga) { manga!!.hasCustomCover() },
                         onShareClick = { sm.shareCover(context) },

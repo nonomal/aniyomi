@@ -1,12 +1,14 @@
 package tachiyomi.domain.entries.anime.model
 
+import androidx.compose.runtime.Immutable
 import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
 import eu.kanade.tachiyomi.animesource.model.SAnime
-import tachiyomi.core.preference.TriState
+import tachiyomi.core.common.preference.TriState
 import java.io.Serializable
 import java.time.Instant
 import kotlin.math.pow
 
+@Immutable
 data class Anime(
     val id: Long,
     val source: Long,
@@ -30,6 +32,7 @@ data class Anime(
     val initialized: Boolean,
     val lastModifiedAt: Long,
     val favoriteModifiedAt: Long?,
+    val version: Long,
 ) : Serializable {
 
     val expectedNextUpdate: Instant?
@@ -54,6 +57,9 @@ data class Anime(
 
     val skipIntroLength: Int
         get() = (viewerFlags and ANIME_INTRO_MASK).toInt()
+
+    val skipIntroDisable: Boolean
+        get() = (viewerFlags and ANIME_INTRO_DISABLE_MASK) == ANIME_INTRO_DISABLE_MASK
 
     val nextEpisodeToAir: Int
         get() = (viewerFlags and ANIME_AIRING_EPISODE_MASK).removeHexZeros(zeros = 2).toInt()
@@ -114,9 +120,10 @@ data class Anime(
         const val EPISODE_DISPLAY_NUMBER = 0x00100000L
         const val EPISODE_DISPLAY_MASK = 0x00100000L
 
-        const val ANIME_INTRO_MASK = 0x000000000000FFL
-        const val ANIME_AIRING_EPISODE_MASK = 0x00000000FFFF00L
-        const val ANIME_AIRING_TIME_MASK = 0xFFFFFFFF000000L
+        const val ANIME_INTRO_MASK = 0x0000000000000FFL
+        const val ANIME_AIRING_EPISODE_MASK = 0x000000000FFFF00L
+        const val ANIME_AIRING_TIME_MASK = 0x0FFFFFFFF000000L
+        const val ANIME_INTRO_DISABLE_MASK = 0x100000000000000L
 
         fun create() = Anime(
             id = -1L,
@@ -141,6 +148,7 @@ data class Anime(
             initialized = false,
             lastModifiedAt = 0L,
             favoriteModifiedAt = null,
+            version = 0L,
         )
     }
 }

@@ -22,7 +22,7 @@ import eu.kanade.domain.entries.anime.model.forceDownloaded
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import kotlinx.collections.immutable.persistentListOf
-import tachiyomi.core.preference.TriState
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.LabeledCheckbox
@@ -136,7 +136,7 @@ private fun ColumnScope.SortPage(
 ) {
     listOf(
         MR.strings.sort_by_source to Anime.EPISODE_SORTING_SOURCE,
-        MR.strings.sort_by_number to Anime.EPISODE_SORTING_NUMBER,
+        MR.strings.sort_by_episode_number to Anime.EPISODE_SORTING_NUMBER,
         MR.strings.sort_by_upload_date to Anime.EPISODE_SORTING_UPLOAD_DATE,
         MR.strings.action_sort_alpha to Anime.EPISODE_SORTING_ALPHABET,
     ).map { (titleRes, mode) ->

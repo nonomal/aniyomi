@@ -24,10 +24,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
@@ -35,6 +38,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.core.util.ifMangaSourcesLoaded
 import eu.kanade.presentation.browse.anime.components.RemoveEntryDialog
 import eu.kanade.presentation.browse.manga.BrowseSourceContent
 import eu.kanade.presentation.browse.manga.MissingSourceScreen
@@ -43,10 +47,12 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.entries.manga.DuplicateMangaDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.core.Constants
+import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.manga.extension.details.MangaSourcePreferencesScreen
+import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialog
+import eu.kanade.tachiyomi.ui.browse.manga.migration.search.MigrateMangaDialogScreenModel
 import eu.kanade.tachiyomi.ui.browse.manga.source.browse.BrowseMangaSourceScreenModel.Listing
 import eu.kanade.tachiyomi.ui.category.CategoriesTab
 import eu.kanade.tachiyomi.ui.entries.manga.MangaScreen
@@ -54,12 +60,13 @@ import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
-import tachiyomi.core.util.lang.launchIO
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.source.manga.model.StubMangaSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.entries.manga.LocalMangaSource
 
 data class BrowseMangaSourceScreen(
@@ -73,6 +80,11 @@ data class BrowseMangaSourceScreen(
 
     @Composable
     override fun Content() {
+        if (!ifMangaSourcesLoaded()) {
+            LoadingScreen()
+            return
+        }
+
         val screenModel = rememberScreenModel { BrowseMangaSourceScreenModel(sourceId, listingQuery) }
         val state by screenModel.state.collectAsState()
 
@@ -115,9 +127,16 @@ data class BrowseMangaSourceScreen(
             assistUrl = (screenModel.source as? HttpSource)?.baseUrl
         }
 
+        var topBarHeight by remember { mutableIntStateOf(0) }
         Scaffold(
             topBar = {
-                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                Column(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surface)
+                        .onGloballyPositioned { layoutCoordinates ->
+                            topBarHeight = layoutCoordinates.size.height
+                        },
+                ) {
                     BrowseMangaSourceToolbar(
                         searchQuery = state.toolbarQuery,
                         onSearchQueryChange = screenModel::setToolbarQuery,
@@ -205,6 +224,8 @@ data class BrowseMangaSourceScreen(
                 source = screenModel.source,
                 mangaList = pagingFlow.collectAsLazyPagingItems(),
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
+                entries = screenModel.getColumnsPreferenceForCurrentOrientation(LocalConfiguration.current.orientation),
+                topBarHeight = topBarHeight,
                 displayMode = screenModel.displayMode,
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
@@ -249,6 +270,24 @@ data class BrowseMangaSourceScreen(
                     onDismissRequest = onDismissRequest,
                     onConfirm = { screenModel.addFavorite(dialog.manga) },
                     onOpenManga = { navigator.push(MangaScreen(dialog.duplicate.id)) },
+                    onMigrate = {
+                        screenModel.setDialog(
+                            BrowseMangaSourceScreenModel.Dialog.Migrate(dialog.manga, dialog.duplicate),
+                        )
+                    },
+                )
+            }
+
+            is BrowseMangaSourceScreenModel.Dialog.Migrate -> {
+                MigrateMangaDialog(
+                    oldManga = dialog.oldManga,
+                    newManga = dialog.newManga,
+                    screenModel = MigrateMangaDialogScreenModel(),
+                    onDismissRequest = onDismissRequest,
+                    onClickTitle = { navigator.push(MangaScreen(dialog.oldManga.id)) },
+                    onPopScreen = {
+                        onDismissRequest()
+                    },
                 )
             }
             is BrowseMangaSourceScreenModel.Dialog.RemoveManga -> {
@@ -264,14 +303,16 @@ data class BrowseMangaSourceScreen(
                 ChangeCategoryDialog(
                     initialSelection = dialog.initialSelection,
                     onDismissRequest = onDismissRequest,
-                    onEditCategories = { navigator.push(CategoriesTab(true)) },
+                    onEditCategories = {
+                        navigator.push(CategoriesTab)
+                        CategoriesTab.showMangaCategory()
+                    },
                     onConfirm = { include, _ ->
                         screenModel.changeMangaFavorite(dialog.manga)
                         screenModel.moveMangaToCategories(dialog.manga, include)
                     },
                 )
             }
-            is BrowseMangaSourceScreenModel.Dialog.Migrate -> {}
             else -> {}
         }
 
